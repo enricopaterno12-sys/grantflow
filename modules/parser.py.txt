@@ -1,0 +1,28 @@
+import fitz  # Libreria PyMuPDF
+
+class BandoParser:
+    def __init__(self):
+        self.testo_estratto = ""
+
+    def estrai_testo(self, percorso_pdf):
+        """Legge il PDF e restituisce tutto il testo contenuto."""
+        try:
+            documento = fitz.open(percorso_pdf)
+            testo = ""
+            for pagina in documento:
+                testo += pagina.get_text()
+            documento.close()
+            self.testo_estratto = testo
+            return testo
+        except Exception as e:
+            return f"Errore durante la lettura del PDF: {e}"
+
+if __name__ == "__main__":
+    parser = BandoParser()
+    # Nome esatto del tuo file bando
+    percorso = "sample_bandi/Bando di concorso_Programma Itaca a.s. 2025_2026 (1).pdf"
+    testo = parser.estrai_testo(percorso)
+    
+    print("\n--- TEST ESTRAZIONE TESTO ---")
+    print(testo[:500]) # Stampa i primi 500 caratteri
+    print("\n-----------------------------")

@@ -1,0 +1,11 @@
+fpdf2
+langchain
+langchain-groq
+pymupdf
+python-dotenv
+python-docx
+python-pptx
+streamlit
+fastapi
+uvicorn[standard]
+python-multipart
