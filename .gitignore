@@ -4,4 +4,7 @@ __pycache__/
 .env
 .streamlit/
 sample_bandi/
-data/history.json
+data/
+node_modules/
+.next/
+.env.local
