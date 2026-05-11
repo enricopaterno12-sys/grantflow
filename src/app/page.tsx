@@ -8,7 +8,7 @@ import LoadingProgress from "@/components/LoadingProgress";
 import ResultsView from "@/components/ResultsView";
 import { analyzeBando, verifyEligibility, enrichVisura } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
-import type { AnalyzeResponse, VerifyResponse, CompanyData, Analysis } from "@/types";
+import type { AnalyzeResponse, VerifyResponse, CompanyData, Analysis, BusinessPlanResult, EligibilityResult } from "@/types";
 
 type AppStep = "upload" | "form" | "loading" | "results";
 
@@ -111,6 +111,31 @@ export default function Home() {
       setCompanyData(company);
       setStep("results");
       setCurrentAnalysisId("result");
+
+      // Save to Supabase
+      try {
+        const stato = verifyRes.eligibility_checks?.overall ||
+          (verifyRes.riepilogo?.classificazione) || "N/D";
+        const prob = verifyRes.eligibility_checks?.probabilita ||
+          (verifyRes.riepilogo?.probabilita) || 50;
+        const calcoloFin = verifyRes.calcolo_finanziario || verifyRes.riepilogo || {};
+
+        await supabase.from("analyses").insert({
+          user_id: "anonymous",
+          nome_azienda: company.ragione_sociale,
+          ateco: company.ateco,
+          esito_analisi: stato,
+          probabilita: prob,
+          investimento: calcoloFin.investimento_effettivo || calcoloFin.investimento || 0,
+          scheda_bando: analyzeRes?.scheda || "",
+          eligibility: verifyRes.eligibility || "",
+          business_plan: verifyRes.business_plan || "",
+          calcolo_finanziario: calcoloFin,
+          parametri_finanziari: analyzeRes?.parametri_finanziari || {},
+        });
+      } catch {
+        // Save silently - history still works on next load
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || "Errore durante l'analisi");
       setStep("form");

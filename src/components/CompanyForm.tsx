@@ -168,7 +168,7 @@ export default function CompanyForm({ visuraPrefill, onAnalyze, loading }: Props
             {loading ? "Preparazione..." : "Avvia Analisi"}
           </span>
         ) : (
-          "Analizza Bando"
+          "Analizza Bando e Genera Dossier"
         )}
       </button>
     </form>
