@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus } from "lucide-react";
+import { Plus, FileText } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import HistoryItem from "./HistoryItem";
 import type { Analysis } from "@/types";
 
 interface Props {
@@ -31,43 +30,83 @@ export default function Sidebar({ activeId, onNewAnalysis, onSelectAnalysis }: P
   };
 
   return (
-    <aside className="w-72 bg-gray-900 text-white flex flex-col h-screen flex-shrink-0">
-      <div className="p-4 border-b border-gray-800">
-        <h1 className="text-lg font-bold tracking-tight">🎯 GrantFlow AI</h1>
+    <aside className="w-72 bg-[#121212] text-white flex flex-col h-screen flex-shrink-0 border-r border-white/[0.04]">
+      <div className="p-5 border-b border-white/[0.04]">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center">
+            <span className="text-white text-sm font-bold tracking-tight">GF</span>
+          </div>
+          <h1 className="text-base font-semibold tracking-tight text-white">
+            GrantFlow
+          </h1>
+        </div>
       </div>
 
-      <div className="p-3">
+      <div className="p-4">
         <button
           onClick={onNewAnalysis}
-          className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 px-4 rounded-lg transition-colors"
+          className="w-full flex items-center justify-center gap-2.5 bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-medium py-2.5 px-4 rounded-xl transition-all duration-300 shadow-lg shadow-emerald-900/20"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-4 h-4 stroke-[2.5]" />
           Nuova Analisi
         </button>
       </div>
 
-      <div className="px-3 pb-1">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Cronologia</p>
+      <div className="px-[18px] pb-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500/80">
+          Cronologia
+        </p>
       </div>
 
-      <nav className="flex-1 overflow-y-auto">
+      <nav className="flex-1 overflow-y-auto px-2 pb-2">
         {analyses.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-500">Nessuna analisi salvata.</p>
-        ) : (
-          analyses.map((a) => (
-            <div
-              key={a.id}
-              className={`border-l-2 ${activeId === a.id ? "border-blue-500 bg-gray-800" : "border-transparent"}`}
-            >
-              <HistoryItem
-                nomeAzienda={a.nome_azienda}
-                esito={a.esito_analisi}
-                probabilita={a.probabilita}
-                onSelect={() => onSelectAnalysis(a.id)}
-                onDelete={() => deleteAnalysis(a.id)}
-              />
+          <div className="px-3 py-6 text-center">
+            <div className="w-10 h-10 rounded-xl bg-white/[0.03] flex items-center justify-center mx-auto mb-3">
+              <FileText className="w-5 h-5 text-gray-600" />
             </div>
-          ))
+            <p className="text-sm text-gray-500">Nessuna analisi salvata</p>
+          </div>
+        ) : (
+          <div className="space-y-0.5">
+            {analyses.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => onSelectAnalysis(a.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-200 ${
+                  activeId === a.id
+                    ? "bg-white/[0.06] border border-white/[0.06]"
+                    : "hover:bg-white/[0.03] border border-transparent"
+                }`}
+              >
+                <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center">
+                  <FileText className="w-4 h-4 text-emerald-400/70" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-200 truncate">
+                    {a.nome_azienda}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {new Date(a.created_at).toLocaleDateString("it-IT", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </p>
+                </div>
+                <span
+                  className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${
+                    a.esito_analisi === "VERDE"
+                      ? "bg-emerald-500"
+                      : a.esito_analisi === "GIALLO"
+                      ? "bg-yellow-500"
+                      : a.esito_analisi === "ROSSO"
+                      ? "bg-red-500"
+                      : "bg-gray-500"
+                  }`}
+                />
+              </button>
+            ))}
+          </div>
         )}
       </nav>
     </aside>
