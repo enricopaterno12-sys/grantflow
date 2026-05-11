@@ -1,33 +1,61 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Plus, FileText } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, Pin, FileText } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import AnalysisDropdown from "./AnalysisDropdown";
 import type { Analysis } from "@/types";
 
 interface Props {
   activeId?: string | null;
   onNewAnalysis: () => void;
-  onSelectAnalysis: (id: string) => void;
+  analyses: Analysis[];
+  onAnalysesChange: (analyses: Analysis[]) => void;
 }
 
-export default function Sidebar({ activeId, onNewAnalysis, onSelectAnalysis }: Props) {
-  const [analyses, setAnalyses] = useState<Analysis[]>([]);
-
+export default function Sidebar({ activeId, onNewAnalysis, analyses, onAnalysesChange }: Props) {
   useEffect(() => {
     (async () => {
       const { data } = await supabase
         .from("analyses")
         .select("*")
+        .order("is_pinned", { ascending: false })
         .order("created_at", { ascending: false });
-      if (data) setAnalyses(data);
+      if (data) onAnalysesChange(data as Analysis[]);
     })();
-  }, []);
+  }, [onAnalysesChange]);
 
-  const deleteAnalysis = async (id: string) => {
+  const handleRename = useCallback(async (id: string, newName: string) => {
+    onAnalysesChange(analyses.map((a) => (a.id === id ? { ...a, name: newName } : a)));
+    await supabase.from("analyses").update({ name: newName }).eq("id", id);
+  }, [analyses, onAnalysesChange]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    onAnalysesChange(analyses.filter((a) => a.id !== id));
     await supabase.from("analyses").delete().eq("id", id);
-    setAnalyses((prev) => prev.filter((a) => a.id !== id));
-  };
+  }, [analyses, onAnalysesChange]);
+
+  const handleTogglePin = useCallback(async (id: string, pinned: boolean) => {
+    onAnalysesChange(
+      analyses.map((a) => (a.id === id ? { ...a, is_pinned: pinned } : a))
+        .sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0))
+    );
+    await supabase.from("analyses").update({ is_pinned: pinned }).eq("id", id);
+  }, [analyses, onAnalysesChange]);
+
+  const handleShare = useCallback(async (id: string) => {
+    const url = `${window.location.origin}?analysis=${id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const input = document.createElement("input");
+      input.value = url;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+    }
+  }, []);
 
   return (
     <aside className="w-72 bg-[#121212] text-white flex flex-col h-screen flex-shrink-0 border-r border-white/[0.04]">
@@ -69,42 +97,44 @@ export default function Sidebar({ activeId, onNewAnalysis, onSelectAnalysis }: P
         ) : (
           <div className="space-y-0.5">
             {analyses.map((a) => (
-              <button
+              <div
                 key={a.id}
-                onClick={() => onSelectAnalysis(a.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-200 ${
+                className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl transition-all duration-200 ${
                   activeId === a.id
                     ? "bg-white/[0.06] border border-white/[0.06]"
                     : "hover:bg-white/[0.03] border border-transparent"
                 }`}
               >
-                <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center">
-                  <FileText className="w-4 h-4 text-emerald-400/70" />
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center relative">
+                    <FileText className="w-4 h-4 text-emerald-400/70" />
+                    {a.is_pinned && (
+                      <span className="absolute -top-1 -right-1">
+                        <Pin className="w-2.5 h-2.5 text-emerald-500 fill-emerald-500" />
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-200 truncate">
+                      {a.name}
+                    </p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      {new Date(a.created_at).toLocaleDateString("it-IT", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-200 truncate">
-                    {a.nome_azienda}
-                  </p>
-                  <p className="text-[11px] text-gray-500 mt-0.5">
-                    {new Date(a.created_at).toLocaleDateString("it-IT", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </p>
-                </div>
-                <span
-                  className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${
-                    a.esito_analisi === "VERDE"
-                      ? "bg-emerald-500"
-                      : a.esito_analisi === "GIALLO"
-                      ? "bg-yellow-500"
-                      : a.esito_analisi === "ROSSO"
-                      ? "bg-red-500"
-                      : "bg-gray-500"
-                  }`}
+                <AnalysisDropdown
+                  analysis={{ id: a.id, name: a.name, is_pinned: a.is_pinned }}
+                  onRename={handleRename}
+                  onDelete={handleDelete}
+                  onTogglePin={handleTogglePin}
+                  onShare={handleShare}
                 />
-              </button>
+              </div>
             ))}
           </div>
         )}

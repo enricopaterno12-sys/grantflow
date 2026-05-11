@@ -120,6 +120,16 @@ export interface ChecklistItem {
   completato: boolean;
 }
 
+// ── Analysis (Database Schema) ────────────────
+export interface Analysis {
+  id: string;
+  user_id: string;
+  name: string;
+  data: Record<string, unknown>;
+  created_at: string;
+  is_pinned: boolean;
+}
+
 // ── API Response types ────────────────────────
 export interface AnalyzeResponse {
   testo_estratto: string;
@@ -138,6 +148,7 @@ export interface VerifyResponse {
   business_plan: string;
   business_plan_data: BusinessPlanResult;
   checklist: ChecklistItem[];
+  riepilogo?: Record<string, unknown>;
 }
 
 // ── Legacy (kept for backward compat) ─────────
@@ -165,21 +176,4 @@ export interface Valutazione {
   dettaglio: string;
 }
 
-export interface Analysis {
-  id: string;
-  user_id: string;
-  created_at: string;
-  nome_azienda: string;
-  esito_analisi: string;
-  probabilita: number;
-  link_al_report?: string;
-  ateco?: string;
-  investimento?: number;
-  scheda_bando?: string;
-  eligibility?: string;
-  business_plan?: string;
-  parametri_finanziari?: ParametriFinanziari;
-  calcolo_finanziario?: CalcoloFinanziario;
-}
-
-export type AppStep = "upload" | "form" | "results";
+export type AppStep = "upload" | "form" | "loading" | "results";

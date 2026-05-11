@@ -6,9 +6,10 @@ import UploadBando from "@/components/UploadBando";
 import CompanyForm from "@/components/CompanyForm";
 import LoadingProgress from "@/components/LoadingProgress";
 import ResultsView from "@/components/ResultsView";
+import SaveModal from "@/components/SaveModal";
 import { analyzeBando, verifyEligibility, enrichVisura } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
-import type { AnalyzeResponse, VerifyResponse, CompanyData, Analysis, BusinessPlanResult, EligibilityResult } from "@/types";
+import type { AnalyzeResponse, VerifyResponse, CompanyData, Analysis } from "@/types";
 
 type AppStep = "upload" | "form" | "loading" | "results";
 
@@ -23,17 +24,20 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [currentAnalysisId, setCurrentAnalysisId] = useState<string | null>(null);
-  const [recentAnalyses, setRecentAnalyses] = useState<Analysis[]>([]);
+  const [analyses, setAnalyses] = useState<Analysis[]>([]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from("analyses")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(5);
-      if (data) setRecentAnalyses(data);
-    })();
+  const resetAnalysis = useCallback(() => {
+    setStep("upload");
+    setBandoFile(null);
+    setBandoInfo(null);
+    setVisuraPrefill(undefined);
+    setAnalyzeResult(null);
+    setVerifyResult(null);
+    setCompanyData(null);
+    setError("");
+    setCurrentAnalysisId(null);
+    setShowSaveModal(false);
   }, []);
 
   const handleBandoSelected = useCallback(async (file: File) => {
@@ -87,8 +91,6 @@ export default function Home() {
     };
 
     try {
-      // Enrich with visura if provided
-      let visuraText = "";
       if (data.visuraFile) {
         const enrichResult = await enrichVisura(data.visuraFile);
         if (enrichResult.visura_data) {
@@ -96,7 +98,6 @@ export default function Home() {
         }
       }
 
-      // Full analysis (re-analyze if needed)
       const analyzeRes = analyzeResult || await analyzeBando(bandoFile);
       if (!analyzeResult) setAnalyzeResult(analyzeRes);
 
@@ -111,31 +112,6 @@ export default function Home() {
       setCompanyData(company);
       setStep("results");
       setCurrentAnalysisId("result");
-
-      // Save to Supabase
-      try {
-        const stato = verifyRes.eligibility_checks?.overall ||
-          (verifyRes.riepilogo?.classificazione) || "N/D";
-        const prob = verifyRes.eligibility_checks?.probabilita ||
-          (verifyRes.riepilogo?.probabilita) || 50;
-        const calcoloFin = verifyRes.calcolo_finanziario || verifyRes.riepilogo || {};
-
-        await supabase.from("analyses").insert({
-          user_id: "anonymous",
-          nome_azienda: company.ragione_sociale,
-          ateco: company.ateco,
-          esito_analisi: stato,
-          probabilita: prob,
-          investimento: calcoloFin.investimento_effettivo || calcoloFin.investimento || 0,
-          scheda_bando: analyzeRes?.scheda || "",
-          eligibility: verifyRes.eligibility || "",
-          business_plan: verifyRes.business_plan || "",
-          calcolo_finanziario: calcoloFin,
-          parametri_finanziari: analyzeRes?.parametri_finanziari || {},
-        });
-      } catch {
-        // Save silently - history still works on next load
-      }
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || "Errore durante l'analisi");
       setStep("form");
@@ -144,28 +120,61 @@ export default function Home() {
     }
   }, [bandoFile, analyzeResult]);
 
+  const handleSaveAnalysis = useCallback(async (name: string) => {
+    const snapshot = {
+      analyzeResult,
+      verifyResult,
+      companyData,
+      bandoInfo,
+    };
+
+    const { data, error: saveError } = await supabase
+      .from("analyses")
+      .insert({
+        user_id: "anonymous",
+        name,
+        data: snapshot,
+        is_pinned: false,
+      })
+      .select()
+      .single();
+
+    if (!saveError && data) {
+      setAnalyses((prev) => [data as Analysis, ...prev]);
+      setCurrentAnalysisId(data.id);
+    }
+
+    resetAnalysis();
+  }, [analyzeResult, verifyResult, companyData, bandoInfo, resetAnalysis]);
+
   const handleNewAnalysis = useCallback(() => {
-    setStep("upload");
-    setBandoFile(null);
-    setBandoInfo(null);
-    setVisuraPrefill(undefined);
-    setAnalyzeResult(null);
-    setVerifyResult(null);
-    setCompanyData(null);
-    setError("");
-    setCurrentAnalysisId(null);
-  }, []);
+    if (step === "results" && companyData && verifyResult) {
+      setShowSaveModal(true);
+      return;
+    }
+    resetAnalysis();
+  }, [step, companyData, verifyResult, resetAnalysis]);
+
+  const handleDiscardAnalysis = useCallback(() => {
+    resetAnalysis();
+  }, [resetAnalysis]);
+
+  const defaultAnalysisName = companyData
+    ? `Analisi ${companyData.ragione_sociale} - ${new Date().toLocaleDateString("it-IT")}`
+    : `Analisi ${new Date().toLocaleDateString("it-IT")}`;
 
   return (
     <div className="flex h-screen bg-night">
       <Sidebar
         activeId={currentAnalysisId}
         onNewAnalysis={handleNewAnalysis}
-        onSelectAnalysis={(id) => setCurrentAnalysisId(id)}
+        analyses={analyses}
+        onAnalysesChange={setAnalyses}
       />
 
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-5xl mx-auto px-8 py-8 space-y-8 animate-fade-in">
+          {/* Header */}
           <div>
             <h2 className="text-xl font-semibold text-white">
               {step === "upload" ? "Nuova Analisi" :
@@ -255,44 +264,35 @@ export default function Home() {
           {step === "results" && verifyResult && companyData && (
             <div className="animate-slide-up">
               <ResultsView response={verifyResult} azienda={companyData} deepScan={analyzeResult?.deep_scan as any} />
-            </div>
-          )}
 
-          {/* Latest Analyses (only on upload step) */}
-          {step === "upload" && recentAnalyses.length > 0 && (
-            <div className="space-y-4 pt-4 border-t border-white/[0.04]">
-              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-[0.1em]">Ultime Analisi</h3>
-              <div className="glass rounded-2xl overflow-hidden">
-                <table className="w-full">
-                  <tbody>
-                    {recentAnalyses.map((a, i) => (
-                      <tr key={a.id} className={i !== recentAnalyses.length - 1 ? "border-b border-white/[0.04]" : ""}>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center">
-                              <span className="text-xs font-bold text-emerald-400/70">{a.nome_azienda?.charAt(0)?.toUpperCase() || "?"}</span>
-                            </div>
-                            <span className="text-sm font-medium text-gray-200">{a.nome_azienda}</span>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5 text-sm text-gray-500">
-                          {new Date(a.created_at).toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" })}
-                        </td>
-                        <td className="px-5 py-3.5 text-right">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-900/30 text-emerald-400 border border-emerald-500/10">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            Completato
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              {/* Save / Nuova Analisi buttons */}
+              <div className="mt-8 flex items-center justify-between p-5 glass rounded-2xl">
+                <div>
+                  <p className="text-sm font-medium text-white">Analisi completata</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Salva questa analisi nello storico o avvia una nuova analisi</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleNewAnalysis}
+                    className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 rounded-xl transition-all duration-200 shadow-lg shadow-emerald-900/20"
+                  >
+                    Nuova Analisi
+                  </button>
+                </div>
               </div>
             </div>
           )}
         </div>
       </main>
+
+      {/* Save Modal */}
+      {showSaveModal && (
+        <SaveModal
+          defaultName={defaultAnalysisName}
+          onSave={handleSaveAnalysis}
+          onDiscard={handleDiscardAnalysis}
+        />
+      )}
     </div>
   );
 }
