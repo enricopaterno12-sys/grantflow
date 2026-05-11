@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { Upload, FileText, Building } from "lucide-react";
+import DarkSelect from "./DarkSelect";
 
 interface Props {
   visuraPrefill?: { ragione_sociale?: string; ateco?: string };
@@ -84,13 +85,17 @@ export default function CompanyForm({ visuraPrefill, onAnalyze, loading }: Props
           </div>
           <div>
             <label className={labelClass}>Dimensione</label>
-            <select value={form.dimensione} onChange={(e) => handleChange("dimensione", e.target.value)} className={inputClass}>
-              <option value="">Seleziona...</option>
-              <option value="Micro (0-9)">Micro (0-9)</option>
-              <option value="Piccola (10-49)">Piccola (10-49)</option>
-              <option value="Media (50-249)">Media (50-249)</option>
-              <option value="Grande (250+)">Grande (250+)</option>
-            </select>
+            <DarkSelect
+              value={form.dimensione}
+              onChange={(v) => handleChange("dimensione", v)}
+              options={[
+                { value: "Micro (0-9)", label: "Micro (0-9)" },
+                { value: "Piccola (10-49)", label: "Piccola (10-49)" },
+                { value: "Media (50-249)", label: "Media (50-249)" },
+                { value: "Grande (250+)", label: "Grande (250+)" },
+              ]}
+              placeholder="Seleziona..."
+            />
           </div>
           <div>
             <label className={labelClass}>Regione</label>

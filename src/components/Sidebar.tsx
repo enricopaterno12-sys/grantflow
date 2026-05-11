@@ -11,19 +11,26 @@ interface Props {
   onNewAnalysis: () => void;
   analyses: Analysis[];
   onAnalysesChange: (analyses: Analysis[]) => void;
+  refreshKey?: number;
 }
 
-export default function Sidebar({ activeId, onNewAnalysis, analyses, onAnalysesChange }: Props) {
+export default function Sidebar({ activeId, onNewAnalysis, analyses, onAnalysesChange, refreshKey }: Props) {
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("analyses")
         .select("*")
         .order("is_pinned", { ascending: false })
         .order("created_at", { ascending: false });
-      if (data) onAnalysesChange(data as Analysis[]);
+      if (error) {
+        console.error("Supabase fetch error:", error.message);
+        return;
+      }
+      if (data) {
+        onAnalysesChange(data as Analysis[]);
+      }
     })();
-  }, [onAnalysesChange]);
+  }, [onAnalysesChange, refreshKey]);
 
   const handleRename = useCallback(async (id: string, newName: string) => {
     onAnalysesChange(analyses.map((a) => (a.id === id ? { ...a, name: newName } : a)));
@@ -116,7 +123,7 @@ export default function Sidebar({ activeId, onNewAnalysis, analyses, onAnalysesC
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-200 truncate">
-                      {a.name}
+                      {a.name || (a as any).nome_azienda || "Analisi senza nome"}
                     </p>
                     <p className="text-[11px] text-gray-500 mt-0.5">
                       {new Date(a.created_at).toLocaleDateString("it-IT", {

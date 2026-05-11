@@ -26,6 +26,7 @@ export default function Home() {
   const [currentAnalysisId, setCurrentAnalysisId] = useState<string | null>(null);
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const resetAnalysis = useCallback(() => {
     setStep("upload");
@@ -142,6 +143,9 @@ export default function Home() {
     if (!saveError && data) {
       setAnalyses((prev) => [data as Analysis, ...prev]);
       setCurrentAnalysisId(data.id);
+      setRefreshKey((k) => k + 1);
+    } else if (saveError) {
+      console.error("Save to Supabase failed:", saveError.message);
     }
 
     resetAnalysis();
@@ -170,6 +174,7 @@ export default function Home() {
         onNewAnalysis={handleNewAnalysis}
         analyses={analyses}
         onAnalysesChange={setAnalyses}
+        refreshKey={refreshKey}
       />
 
       <main className="flex-1 overflow-y-auto">
