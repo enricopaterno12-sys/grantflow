@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import Sidebar from "@/components/Sidebar";
 import UploadBando from "@/components/UploadBando";
 import CompanyForm from "@/components/CompanyForm";
