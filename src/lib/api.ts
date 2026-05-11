@@ -1,16 +1,25 @@
 import axios from "axios";
 import type { CompanyData, ParametriFinanziari } from "@/types";
 
+const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL || "";
+const baseURL = FASTAPI_URL || "/api";
+
 const api = axios.create({
-  baseURL: "/api",
-  timeout: 60000,
+  baseURL,
+  timeout: 90000,
 });
 
-export async function analyzeBando(file: File, visura?: File) {
+export async function analyzeBando(file: File) {
   const formData = new FormData();
   formData.append("file", file);
-  if (visura) formData.append("visura", visura);
   const res = await api.post("/analyze", formData);
+  return res.data;
+}
+
+export async function enrichVisura(visura: File) {
+  const formData = new FormData();
+  formData.append("visura", visura);
+  const res = await api.post("/enrich", formData);
   return res.data;
 }
 
@@ -20,11 +29,23 @@ export async function verifyEligibility(data: {
   scheda_bando: string;
   deep_scan: Record<string, unknown>;
 }) {
+  if (FASTAPI_URL) {
+    const res = await api.post("/process", {
+      testo_bando: data.scheda_bando,
+      dati_azienda: data.dati_azienda,
+      testo_visura: "",
+    });
+    return res.data;
+  }
   const res = await api.post("/verify", data);
   return res.data;
 }
 
-export async function exportDocument(type: "docx" | "pptx", data: Record<string, unknown>) {
+export async function exportDocument(type: string, data: Record<string, unknown>) {
+  if (FASTAPI_URL) {
+    const res = await api.post(`/export/${type}`, data, { responseType: "blob" });
+    return res.data;
+  }
   const res = await api.post("/export", { type, data }, { responseType: "blob" });
   return res.data;
 }
