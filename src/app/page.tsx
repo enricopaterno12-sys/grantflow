@@ -166,38 +166,18 @@ export default function Home() {
 
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-5xl mx-auto px-8 py-8 space-y-8 animate-fade-in">
-          {/* Status Dashboard */}
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-white">
-                {step === "upload" ? "Nuova Analisi" :
-                 step === "form" ? "Profilazione Azienda" :
-                 step === "loading" ? "Elaborazione in corso" : "Risultati Analisi"}
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                {step === "upload" ? "Carica il bando PDF per iniziare" :
-                 step === "form" ? "Completa i dati azienda e carica documenti integrativi" :
-                 step === "loading" ? "GrantFlow AI sta analizzando bando e requisiti" :
-                 "Report completo e documenti generati"}
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="glass rounded-xl px-4 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-500">Crediti Residui</p>
-                <p className="text-lg font-bold text-white mt-0.5">42</p>
-              </div>
-              <div className="glass rounded-xl px-4 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-500">Status DB</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse-dot" />
-                  <span className="text-sm font-medium text-emerald-400">Online</span>
-                </div>
-              </div>
-              <div className="glass rounded-xl px-4 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-500">Analisi Mensili</p>
-                <p className="text-lg font-bold text-white mt-0.5">18</p>
-              </div>
-            </div>
+          <div>
+            <h2 className="text-xl font-semibold text-white">
+              {step === "upload" ? "Nuova Analisi" :
+               step === "form" ? "Profilazione Azienda" :
+               step === "loading" ? "Elaborazione in corso" : "Risultati Analisi"}
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              {step === "upload" ? "Carica il bando PDF per iniziare" :
+               step === "form" ? "Completa i dati azienda e carica documenti integrativi" :
+               step === "loading" ? "GrantFlow AI sta analizzando bando e requisiti" :
+               "Report completo e documenti generati"}
+            </p>
           </div>
 
           {/* Step indicator */}
