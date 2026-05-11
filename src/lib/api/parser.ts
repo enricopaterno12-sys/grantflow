@@ -22,11 +22,18 @@ export function parseVisura(testo: string): { ragione_sociale: string; ateco: st
 }
 
 export async function extractPdfText(buffer: Buffer): Promise<string> {
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: buffer });
-  const textResult = await parser.getText();
-  await parser.destroy();
-  return textResult.text || "";
+  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const data = new Uint8Array(buffer);
+  const doc = await pdfjsLib.getDocument({ data }).promise;
+  const pages: string[] = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items.map((item: any) => item.str).join(" ");
+    pages.push(pageText);
+  }
+  await doc.destroy();
+  return pages.join("\n");
 }
 
 export async function fileToBuffer(file: File): Promise<Buffer> {
