@@ -2,120 +2,123 @@
 
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, FileText, Building } from "lucide-react";
+import { Upload, FileText, Building, AlertCircle } from "lucide-react";
 import DarkSelect from "./DarkSelect";
+import type { ParametriFinanziari } from "@/types";
 
 interface Props {
   visuraPrefill?: { ragione_sociale?: string; ateco?: string };
+  parametriFinanziari?: ParametriFinanziari;
   onAnalyze: (data: {
-    ragione_sociale: string;
-    ateco: string;
-    dimensione: string;
-    regione: string;
-    fatturato: number;
-    dipendenti: number;
-    data_costituzione: string;
-    investimento: number;
-    finanziamento_richiesto: number;
-    visuraFile?: File | null;
+    ragione_sociale: string; ateco: string; dimensione: string; regione: string;
+    fatturato: number; dipendenti: number; data_costituzione: string;
+    investimento: number; finanziamento_richiesto: number; visuraFile?: File | null;
   }) => void;
   loading: boolean;
 }
 
-const inputClass =
-  "w-full px-3.5 py-2.5 bg-white/[0.04] border border-white/[0.06] rounded-xl text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/40 transition-all duration-200 text-sm";
-
+const inputClass = "w-full px-3.5 py-2.5 bg-white/[0.04] border border-white/[0.06] rounded-xl text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/40 transition-all duration-200 text-sm";
+const errorInputClass = "w-full px-3.5 py-2.5 bg-white/[0.04] border border-red-500/30 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-500/40 transition-all duration-200 text-sm";
 const labelClass = "block text-sm font-medium text-gray-400 mb-1.5";
 
-export default function CompanyForm({ visuraPrefill, onAnalyze, loading }: Props) {
+export default function CompanyForm({ visuraPrefill, parametriFinanziari, onAnalyze, loading }: Props) {
   const [form, setForm] = useState({
-    ragione_sociale: visuraPrefill?.ragione_sociale || "",
-    ateco: visuraPrefill?.ateco || "",
-    dimensione: "",
-    regione: "",
-    fatturato: 0,
-    dipendenti: 0,
-    data_costituzione: "",
-    investimento: 0,
-    finanziamento_richiesto: 0,
+    ragione_sociale: visuraPrefill?.ragione_sociale || "", ateco: visuraPrefill?.ateco || "",
+    dimensione: "", regione: "", fatturato: 0, dipendenti: 0, data_costituzione: "",
+    investimento: 0, finanziamento_richiesto: 0,
   });
-
   const [visuraFile, setVisuraFile] = useState<File | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [errors, setErrors] = useState<Record<string, boolean>>({});
 
   const handleChange = (field: string, value: string | number) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+    if (submitted && value) setErrors((prev) => ({ ...prev, [field]: false }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitted(true);
+    const errs: Record<string, boolean> = {};
+    if (!form.ragione_sociale.trim()) errs.ragione_sociale = true;
+    if (!form.ateco.trim()) errs.ateco = true;
+    if (form.fatturato <= 0) errs.fatturato = true;
+    setErrors(errs);
+    if (Object.keys(errs).length > 0) return;
     onAnalyze({ ...form, visuraFile });
   };
 
-  const isValid = form.ragione_sociale.trim() && form.ateco.trim() && form.fatturato > 0;
-
   const visuraDrop = useDropzone({
-    onDrop: useCallback((files: File[]) => {
-      if (files.length > 0) setVisuraFile(files[0]);
-    }, []),
-    accept: { "application/pdf": [".pdf"] },
-    maxFiles: 1,
+    onDrop: useCallback((files: File[]) => { if (files.length > 0) setVisuraFile(files[0]); }, []),
+    accept: { "application/pdf": [".pdf"] }, maxFiles: 1,
   });
+
+  const rangeMin = parametriFinanziari?.limite_min_investimento;
+  const rangeMax = parametriFinanziari?.limite_max_investimento;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-3xl mx-auto">
+      {/* Sezione A — Dati Anagrafici */}
       <div className="glass rounded-2xl p-6">
         <div className="flex items-center gap-3 mb-5">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-            <Building className="w-4 h-4 text-emerald-400" />
-          </div>
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><Building className="w-4 h-4 text-emerald-400" /></div>
           <div>
-            <h3 className="text-sm font-semibold text-white">Dati Azienda</h3>
-            <p className="text-xs text-gray-500">Inserisci i dati dell&apos;impresa richiedente</p>
+            <h3 className="text-sm font-semibold text-white">Dati Anagrafici</h3>
+            <p className="text-xs text-gray-500">Informazioni sull&apos;impresa richiedente</p>
           </div>
         </div>
-
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div>
-            <label className={labelClass}>Ragione Sociale *</label>
-            <input type="text" value={form.ragione_sociale} onChange={(e) => handleChange("ragione_sociale", e.target.value)} placeholder="Mia Impresa Srl" className={inputClass} />
+            <label className={labelClass}>Ragione Sociale {submitted && errors.ragione_sociale && <span className="text-red-400">*</span>}</label>
+            <input type="text" value={form.ragione_sociale} onChange={(e) => handleChange("ragione_sociale", e.target.value)} placeholder="Mia Impresa Srl" className={errors.ragione_sociale ? errorInputClass : inputClass} />
           </div>
           <div>
-            <label className={labelClass}>Codice ATECO *</label>
-            <input type="text" value={form.ateco} onChange={(e) => handleChange("ateco", e.target.value)} placeholder="62.01" className={inputClass} />
+            <label className={labelClass}>Codice ATECO {submitted && errors.ateco && <span className="text-red-400">*</span>}</label>
+            <input type="text" value={form.ateco} onChange={(e) => handleChange("ateco", e.target.value)} placeholder="62.01" className={errors.ateco ? errorInputClass : inputClass} />
+            <p className="text-[11px] text-gray-600 mt-1">Formato: XX.XX.XX — es. 62.01.09</p>
           </div>
           <div>
             <label className={labelClass}>Dimensione</label>
-            <DarkSelect
-              value={form.dimensione}
-              onChange={(v) => handleChange("dimensione", v)}
-              options={[
-                { value: "Micro (0-9)", label: "Micro (0-9)" },
-                { value: "Piccola (10-49)", label: "Piccola (10-49)" },
-                { value: "Media (50-249)", label: "Media (50-249)" },
-                { value: "Grande (250+)", label: "Grande (250+)" },
-              ]}
-              placeholder="Seleziona..."
-            />
+            <DarkSelect value={form.dimensione} onChange={(v) => handleChange("dimensione", v)} options={[
+              { value: "Micro (0-9)", label: "Micro (0-9)" }, { value: "Piccola (10-49)", label: "Piccola (10-49)" },
+              { value: "Media (50-249)", label: "Media (50-249)" }, { value: "Grande (250+)", label: "Grande (250+)" },
+            ]} placeholder="Seleziona..." />
           </div>
           <div>
             <label className={labelClass}>Regione</label>
             <input type="text" value={form.regione} onChange={(e) => handleChange("regione", e.target.value)} placeholder="Puglia" className={inputClass} />
           </div>
           <div>
-            <label className={labelClass}>Fatturato (€) *</label>
-            <input type="number" value={form.fatturato || ""} onChange={(e) => handleChange("fatturato", Number(e.target.value))} min={0} placeholder="0" className={inputClass} />
+            <label className={labelClass}>Data Costituzione</label>
+            <input type="date" value={form.data_costituzione} onChange={(e) => handleChange("data_costituzione", e.target.value)} className={inputClass} />
+          </div>
+        </div>
+      </div>
+
+      {/* Sezione B — Dati Economico-Finanziari */}
+      <div className="glass rounded-2xl p-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><Building className="w-4 h-4 text-emerald-400" /></div>
+          <div>
+            <h3 className="text-sm font-semibold text-white">Dati Economico-Finanziari</h3>
+            <p className="text-xs text-gray-500">Situazione economica e piano investimenti</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div>
+            <label className={labelClass}>Fatturato (€) {submitted && errors.fatturato && <span className="text-red-400">*</span>}</label>
+            <input type="number" value={form.fatturato || ""} onChange={(e) => handleChange("fatturato", Number(e.target.value))} min={0} placeholder="0" className={errors.fatturato ? errorInputClass : inputClass} />
           </div>
           <div>
             <label className={labelClass}>Dipendenti</label>
             <input type="number" value={form.dipendenti || ""} onChange={(e) => handleChange("dipendenti", Number(e.target.value))} min={0} placeholder="0" className={inputClass} />
           </div>
           <div>
-            <label className={labelClass}>Data Costituzione</label>
-            <input type="date" value={form.data_costituzione} onChange={(e) => handleChange("data_costituzione", e.target.value)} className={inputClass} />
-          </div>
-          <div>
             <label className={labelClass}>Investimento (€)</label>
             <input type="number" value={form.investimento || ""} onChange={(e) => handleChange("investimento", Number(e.target.value))} min={0} step={1000} placeholder="0" className={inputClass} />
+            {form.investimento > 0 && rangeMin != null && rangeMax != null && (
+              <p className="text-[11px] text-emerald-500/70 mt-1">Range ammesso dal bando: €{rangeMin.toLocaleString()} — €{rangeMax.toLocaleString()}</p>
+            )}
           </div>
           <div>
             <label className={labelClass}>Finanziamento Richiesto (€)</label>
@@ -124,57 +127,47 @@ export default function CompanyForm({ visuraPrefill, onAnalyze, loading }: Props
         </div>
       </div>
 
-      {/* Visura Upload (Phase 2 secondary) */}
+      {/* Visura Upload */}
       <div className="glass rounded-2xl p-6">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center">
-            <Upload className="w-4 h-4 text-gray-400" />
-          </div>
+          <div className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center"><Upload className="w-4 h-4 text-gray-400" /></div>
           <div>
             <h3 className="text-sm font-semibold text-white">Documenti Aziendali (Opzionale)</h3>
             <p className="text-xs text-gray-500">Carica la Visura Camerale per pre-compilazione automatica</p>
           </div>
         </div>
-        <div
-          {...visuraDrop.getRootProps()}
-          className={`group relative cursor-pointer p-6 text-center transition-all duration-300 dashed-border-gray ${
-            visuraDrop.isDragActive ? "bg-white/[0.04]" : "bg-white/[0.02] hover:bg-white/[0.04]"
-          }`}
-        >
+        <div {...visuraDrop.getRootProps()} className={`group relative cursor-pointer p-6 text-center transition-all duration-300 dashed-border-gray ${visuraDrop.isDragActive ? "bg-white/[0.04]" : "bg-white/[0.02] hover:bg-white/[0.04]"}`}>
           <input {...visuraDrop.getInputProps()} />
           {visuraFile ? (
             <div className="flex items-center justify-center gap-3">
-              <FileText className="w-5 h-5 text-emerald-400" />
-              <p className="text-sm text-white">{visuraFile.name}</p>
+              <FileText className="w-5 h-5 text-emerald-400" /><p className="text-sm text-white">{visuraFile.name}</p>
               <p className="text-xs text-gray-500">{(visuraFile.size / 1024).toFixed(0)} KB</p>
             </div>
           ) : (
             <div className="flex items-center justify-center gap-2">
               <Upload className="w-5 h-5 text-gray-500 group-hover:text-gray-400 transition-colors" />
-              <p className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors">
-                Trascina la visura o clicca per selezionare
-              </p>
+              <p className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors">Trascina la visura o clicca per selezionare</p>
             </div>
           )}
         </div>
       </div>
 
-      <button
-        type="submit"
-        disabled={!isValid || loading}
+      {submitted && Object.keys(errors).length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-900/20 border border-red-500/20">
+          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+          <p className="text-sm text-red-300">Compila i campi obbligatori: {Object.keys(errors).join(", ")}</p>
+        </div>
+      )}
+
+      <button type="submit" disabled={loading}
         className="w-full py-3.5 bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 disabled:from-gray-800 disabled:to-gray-800 disabled:text-gray-600 text-white font-medium rounded-xl transition-all duration-300 shadow-lg shadow-emerald-900/20 disabled:shadow-none"
       >
         {loading ? (
           <span className="flex items-center justify-center gap-2">
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            {loading ? "Preparazione..." : "Avvia Analisi"}
+            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+            Preparazione...
           </span>
-        ) : (
-          "Analizza Bando e Genera Dossier"
-        )}
+        ) : "Analizza Bando e Genera Dossier"}
       </button>
     </form>
   );

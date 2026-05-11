@@ -52,9 +52,7 @@ export default function Home() {
         ente: result.ente_erogatore || result.ente || "Ente identificato",
       });
       setAnalyzeResult(result);
-      if (result.visura_data) {
-        setVisuraPrefill(result.visura_data);
-      }
+      if (result.visura_data) setVisuraPrefill(result.visura_data);
     } catch {
       setBandoInfo({ nome: file.name, ente: "Ente in fase di identificazione" });
     }
@@ -63,16 +61,9 @@ export default function Home() {
   }, []);
 
   const handleFormSubmit = useCallback(async (data: {
-    ragione_sociale: string;
-    ateco: string;
-    dimensione: string;
-    regione: string;
-    fatturato: number;
-    dipendenti: number;
-    data_costituzione: string;
-    investimento: number;
-    finanziamento_richiesto: number;
-    visuraFile?: File | null;
+    ragione_sociale: string; ateco: string; dimensione: string; regione: string;
+    fatturato: number; dipendenti: number; data_costituzione: string;
+    investimento: number; finanziamento_richiesto: number; visuraFile?: File | null;
   }) => {
     if (!bandoFile) return;
     setLoading(true);
@@ -80,12 +71,9 @@ export default function Home() {
     setStep("loading");
 
     const company: CompanyData = {
-      ragione_sociale: data.ragione_sociale,
-      ateco: data.ateco,
-      dimensione: data.dimensione || undefined,
-      regione: data.regione || undefined,
-      fatturato: data.fatturato || undefined,
-      dipendenti: data.dipendenti || undefined,
+      ragione_sociale: data.ragione_sociale, ateco: data.ateco,
+      dimensione: data.dimensione || undefined, regione: data.regione || undefined,
+      fatturato: data.fatturato || undefined, dipendenti: data.dipendenti || undefined,
       data_costituzione: data.data_costituzione || undefined,
       investimento: data.investimento || undefined,
       finanziamento_richiesto: data.finanziamento_richiesto || undefined,
@@ -94,9 +82,7 @@ export default function Home() {
     try {
       if (data.visuraFile) {
         const enrichResult = await enrichVisura(data.visuraFile);
-        if (enrichResult.visura_data) {
-          setVisuraPrefill(enrichResult.visura_data);
-        }
+        if (enrichResult.visura_data) setVisuraPrefill(enrichResult.visura_data);
       }
 
       const analyzeRes = analyzeResult || await analyzeBando(bandoFile);
@@ -111,42 +97,37 @@ export default function Home() {
 
       setVerifyResult(verifyRes);
       setCompanyData(company);
-      setStep("results");
       setCurrentAnalysisId("result");
+
+      // Brief pause to show 100% completion on loading screen
+      setLoading(false);
+      await new Promise((r) => setTimeout(r, 700));
+      setStep("results");
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || "Errore durante l'analisi");
       setStep("form");
-    } finally {
       setLoading(false);
     }
   }, [bandoFile, analyzeResult]);
 
-  const handleSaveAnalysis = useCallback(async (name: string) => {
-    const snapshot = { analyzeResult, verifyResult, companyData, bandoInfo };
+  const handleSaveAnalysis = useCallback(async (name: string, tag?: string) => {
+    const snapshot = { analyzeResult, verifyResult, companyData, bandoInfo, tag };
     const tempId = `local_${Date.now()}`;
 
-    // 1. Optimistic: show in sidebar immediately
     const optimistic: Analysis = {
-      id: tempId,
-      user_id: "anonymous",
-      name,
-      data: snapshot,
-      created_at: new Date().toISOString(),
-      is_pinned: false,
+      id: tempId, user_id: "anonymous", name,
+      data: snapshot, created_at: new Date().toISOString(), is_pinned: false,
     };
     setAnalyses((prev) => [optimistic, ...prev]);
     setCurrentAnalysisId(tempId);
 
-    // 2. Attempt Supabase save (may fail if schema mismatch)
     try {
       const { data, error } = await supabase
         .from("analyses")
         .insert({ user_id: "anonymous", name, data: snapshot, is_pinned: false })
-        .select()
-        .single();
+        .select().single();
 
       if (!error && data) {
-        // Replace temp entry with real server record
         setAnalyses((prev) => prev.map((a) => (a.id === tempId ? (data as Analysis) : a)));
         setCurrentAnalysisId(data.id);
         setRefreshKey((k) => k + 1);
@@ -203,25 +184,33 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Step indicator */}
+          {/* Step indicator (P2) */}
           <div className="flex items-center gap-3 text-xs">
             {[
-              { label: "Bando", active: step === "upload" || step === "form" || step === "loading" || step === "results",
-                current: step === "upload" },
-              { label: "Azienda", active: step === "form" || step === "loading" || step === "results",
-                current: step === "form" },
-              { label: "Report", active: step === "loading" || step === "results",
-                current: step === "loading" },
-              { label: "Export", active: step === "results", current: step === "results" },
-            ].map((s, i) => (
-              <div key={s.label} className="flex items-center gap-3">
-                <div className={`flex items-center gap-1.5 ${s.active ? "text-emerald-400" : "text-gray-600"}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${s.current ? "bg-emerald-500" : s.active ? "bg-emerald-500/50" : "bg-gray-700"}`} />
-                  {s.label}
+              { label: "Bando", current: step === "upload" },
+              { label: "Azienda", current: step === "form" },
+              { label: "Report", current: step === "loading" },
+              { label: "Export", current: step === "results" },
+            ].map((s, i) => {
+              const steps = ["upload", "form", "loading", "results"];
+              const idx = steps.indexOf(step);
+              const active = i === idx;
+              const done = i < idx;
+              return (
+                <div key={s.label} className="flex items-center gap-3">
+                  <div className={`flex items-center gap-2 ${active ? "text-emerald-400" : done ? "text-emerald-400/60" : "text-gray-500"}`}>
+                    <span className={`w-3 h-3 rounded-full transition-all duration-300 ${
+                      active ? "bg-emerald-500 shadow-[0_0_6px_#00c896]" :
+                      done ? "bg-emerald-500" : "bg-[#444]"
+                    }`} />
+                    <span className={`${active ? "font-semibold" : "font-normal"} transition-all`}>{s.label}</span>
+                  </div>
+                  {i < 3 && (
+                    <span className={`w-6 h-px transition-colors duration-300 ${done || active ? "bg-emerald-500/50" : "bg-white/[0.06]"}`} />
+                  )}
                 </div>
-                {i < 3 && <span className="text-gray-700">—</span>}
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {error && (
@@ -230,14 +219,14 @@ export default function Home() {
             </div>
           )}
 
-          {/* Phase 1: Upload Bando */}
+          {/* Phase 1 */}
           {step === "upload" && (
             <div className="animate-slide-up pt-8">
               <UploadBando onFileSelected={handleBandoSelected} />
             </div>
           )}
 
-          {/* Phase 2: Profilazione */}
+          {/* Phase 2 (P3) */}
           {step === "form" && (
             <div className="animate-slide-up space-y-6">
               {bandoInfo && (
@@ -251,58 +240,50 @@ export default function Home() {
                     <p className="text-sm font-medium text-white truncate">{bandoInfo.nome}</p>
                     <p className="text-xs text-gray-500">{bandoInfo.ente}</p>
                   </div>
-                  <button
-                    onClick={handleNewAnalysis}
-                    className="text-xs text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0"
-                  >
-                    Cambia bando
-                  </button>
+                  <button onClick={handleNewAnalysis} className="text-xs text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0">Cambia bando</button>
                 </div>
               )}
               <CompanyForm
                 visuraPrefill={visuraPrefill}
+                parametriFinanziari={analyzeResult?.parametri_finanziari}
                 onAnalyze={handleFormSubmit}
                 loading={loading}
               />
             </div>
           )}
 
-          {/* Phase 3: Elaborazione */}
+          {/* Phase 3 (P4) */}
           {step === "loading" && (
             <div className="pt-12">
-              <LoadingProgress />
+              <LoadingProgress isLoading={loading} />
             </div>
           )}
 
-          {/* Phase 4: Risultati */}
+          {/* Phase 4 */}
           {step === "results" && verifyResult && companyData && (
             <div className="animate-slide-up">
               <ResultsView response={verifyResult} azienda={companyData} deepScan={analyzeResult?.deep_scan as any} />
-
-              {/* Save / Nuova Analisi buttons */}
               <div className="mt-8 flex items-center justify-between p-5 glass rounded-2xl">
                 <div>
                   <p className="text-sm font-medium text-white">Analisi completata</p>
                   <p className="text-xs text-gray-500 mt-0.5">Salva questa analisi nello storico o avvia una nuova analisi</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleNewAnalysis}
-                    className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 rounded-xl transition-all duration-200 shadow-lg shadow-emerald-900/20"
-                  >
-                    Nuova Analisi
-                  </button>
-                </div>
+                <button onClick={handleNewAnalysis}
+                  className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 rounded-xl transition-all duration-200 shadow-lg shadow-emerald-900/20">
+                  Nuova Analisi
+                </button>
               </div>
             </div>
           )}
         </div>
       </main>
 
-      {/* Save Modal */}
+      {/* Save Modal (P8) */}
       {showSaveModal && (
         <SaveModal
           defaultName={defaultAnalysisName}
+          ragioneSociale={companyData?.ragione_sociale}
+          nomeBando={bandoInfo?.nome}
           onSave={handleSaveAnalysis}
           onDiscard={handleDiscardAnalysis}
         />
