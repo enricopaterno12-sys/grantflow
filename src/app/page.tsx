@@ -1,21 +1,16 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/components/AuthProvider";
+import { useState, useCallback } from "react";
 import Sidebar from "@/components/Sidebar";
 import UploadZone from "@/components/UploadZone";
 import CompanyForm from "@/components/CompanyForm";
 import ResultsView from "@/components/ResultsView";
 import { analyzeBando, verifyEligibility } from "@/lib/api";
-import { useAnalyses } from "@/hooks/useAnalyses";
-import type { AnalyzeResponse, VerifyResponse, CompanyData, AppStep } from "@/types";
+import type { AnalyzeResponse, VerifyResponse, CompanyData } from "@/types";
+
+type AppStep = "upload" | "form" | "results";
 
 export default function Home() {
-  const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
-  const { saveAnalysis } = useAnalyses();
-
   const [step, setStep] = useState<AppStep>("upload");
   const [bandoFile, setBandoFile] = useState<File | null>(null);
   const [visuraPrefill, setVisuraPrefill] = useState<{ ragione_sociale?: string; ateco?: string } | undefined>();
@@ -25,10 +20,6 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [currentAnalysisId, setCurrentAnalysisId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!authLoading && !user) router.push("/login");
-  }, [user, authLoading, router]);
 
   const handleFileSelected = useCallback((file: File) => {
     setBandoFile(file);
@@ -100,28 +91,13 @@ export default function Home() {
       setCompanyData(company);
       setStep("results");
 
-      const statoMatch = result.eligibility.match(/CLASSIFICAZIONE FINALE:\s*\[?(\w+)\]?/i);
-      const probMatch = result.eligibility.match(/PROBABILITÀ\s*APPROVAZIONE\s*[:\-]?\s*(\d+)/i);
-
-      const saved = await saveAnalysis({
-        nome_azienda: data.ragione_sociale,
-        esito_analisi: statoMatch?.[1]?.toUpperCase() ?? "N/D",
-        probabilita: probMatch ? parseInt(probMatch[1]) : undefined,
-        ateco: data.ateco,
-        investimento: data.investimento || undefined,
-        scheda_bando: analyzeResult.scheda,
-        eligibility: result.eligibility,
-        business_plan: result.business_plan,
-        parametri_finanziari: analyzeResult.parametri_finanziari,
-        calcolo_finanziario: result.calcolo_finanziario,
-      });
-      setCurrentAnalysisId(saved.id);
+      setCurrentAnalysisId("result");
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || "Errore verifica eligibility");
     } finally {
       setLoading(false);
     }
-  }, [analyzeResult, saveAnalysis]);
+  }, [analyzeResult]);
 
   const handleNewAnalysis = useCallback(() => {
     setStep("upload");
@@ -133,9 +109,6 @@ export default function Home() {
     setError("");
     setCurrentAnalysisId(null);
   }, []);
-
-  if (authLoading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center"><p className="text-gray-400">Caricamento...</p></div>;
-  if (!user) return null;
 
   return (
     <div className="flex h-screen bg-gray-950">

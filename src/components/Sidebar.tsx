@@ -1,9 +1,10 @@
 "use client";
 
-import { Plus, LogOut } from "lucide-react";
-import { useAuth } from "./AuthProvider";
-import { useAnalyses } from "@/hooks/useAnalyses";
+import { useState, useEffect } from "react";
+import { Plus } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import HistoryItem from "./HistoryItem";
+import type { Analysis } from "@/types";
 
 interface Props {
   activeId?: string | null;
@@ -12,8 +13,22 @@ interface Props {
 }
 
 export default function Sidebar({ activeId, onNewAnalysis, onSelectAnalysis }: Props) {
-  const { user, signOut } = useAuth();
-  const { analyses, deleteAnalysis } = useAnalyses();
+  const [analyses, setAnalyses] = useState<Analysis[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("analyses")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (data) setAnalyses(data);
+    })();
+  }, []);
+
+  const deleteAnalysis = async (id: string) => {
+    await supabase.from("analyses").delete().eq("id", id);
+    setAnalyses((prev) => prev.filter((a) => a.id !== id));
+  };
 
   return (
     <aside className="w-72 bg-gray-900 text-white flex flex-col h-screen flex-shrink-0">
@@ -55,19 +70,6 @@ export default function Sidebar({ activeId, onNewAnalysis, onSelectAnalysis }: P
           ))
         )}
       </nav>
-
-      <div className="p-3 border-t border-gray-800">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-400 truncate">{user?.email}</span>
-          <button
-            onClick={signOut}
-            className="p-1.5 text-gray-500 hover:text-white transition-colors"
-            title="Esci"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
     </aside>
   );
 }
