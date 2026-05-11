@@ -166,6 +166,9 @@ DATI AZIENDA:
 SCHEDA BANDO:
 {scheda}
 
+CALCOLO FINANZIARIO:
+{calcolo}
+
 Il Business Plan DEVE includere OGNUNA di queste sezioni in Markdown:
 
 1. ## Descrizione del Progetto

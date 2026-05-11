@@ -1,4 +1,4 @@
-import type { ParametriFinanziari, Valutazione, CashflowProjection, BusinessPlanResult } from "@/types";
+import type { ParametriFinanziari, Valutazione, CashflowProjection, BusinessPlanResult, IndipendenzaFinanziaria } from "@/types";
 
 export class CalcolatoreFinanziario {
   private aliquota_contributo: number;
@@ -67,9 +67,11 @@ export function calcolaBusinessPlan(
   investimento: number,
   contributo: number,
   finanziamento: number,
+  utileNetto?: number,
 ): BusinessPlanResult {
   const anni = 5;
   const tassoSconto = 0.08;
+  const rataFinanziamento = anni > 0 ? finanziamento / anni : 0;
 
   const cashflow: CashflowProjection[] = [];
   let cumulato = -investimento + contributo;
@@ -79,12 +81,12 @@ export function calcolaBusinessPlan(
     const crescita = 0.15 + (anno - 1) * 0.05;
     const ricavi = investimento * crescita;
     const costiOp = investimento * 0.08;
-    const quotaFin = finanziamento / anni;
+    const quotaFin = rataFinanziamento;
     const ammortamento = investimento / anni;
     const costi = costiOp + quotaFin + ammortamento;
     const netto = ricavi - costi;
     cumulato += netto;
-    if (paybackAnni < 0 && cumulato >= 0) paybackAnni = anno;
+    if (paybackAnni < 0 && cumulato >= investimento) paybackAnni = anno;
     cashflow.push({
       anno,
       ricavi: Math.round(ricavi),
@@ -95,11 +97,14 @@ export function calcolaBusinessPlan(
 
   if (paybackAnni < 0) paybackAnni = anni + 1;
 
-  const dscr = investimento > 0 ? (contributo + finanziamento) / investimento : 0;
+  // DSCR: utile_netto / rata_finanziamento (fallback a EBITDA medio se utile_netto non disponibile)
+  const ebitdaMedio = cashflow.reduce((acc, c) => acc + (c.ricavi - Math.round(investimento * 0.08)), 0) / anni;
+  const dscrBase = (utileNetto != null && utileNetto > 0) ? utileNetto : ebitdaMedio;
+  const dscr = rataFinanziamento > 0 ? dscrBase / rataFinanziamento : 0;
 
   const flussi = cashflow.map((c) => c.netto);
   const van = -investimento + flussi.reduce((acc, val, i) => acc + val / Math.pow(1 + tassoSconto, i + 1), 0);
-  const irr = calcolaIrr([-investimento, ...flussi]);
+  const irr = calcolaIrrSicuro([-investimento, ...flussi]);
 
   return {
     dscr: Math.round(dscr * 100) / 100,
@@ -113,18 +118,73 @@ export function calcolaBusinessPlan(
   };
 }
 
-function calcolaIrr(flussi: number[], guess = 0.1): number {
+export function calcolaPayback(
+  investimento: number,
+  contributo: number,
+  rataFinanziamento: number,
+  proiezioni: { netto: number }[],
+): { anni: number; raggiunto: boolean; messaggio: string } {
+  let cumulato = -investimento + contributo;
+  const anni = proiezioni.length;
+  for (let i = 0; i < anni; i++) {
+    cumulato += proiezioni[i].netto;
+    if (cumulato >= investimento) {
+      return { anni: i + 1, raggiunto: true, messaggio: `Payback a ${i + 1} anni` };
+    }
+  }
+  return { anni: anni + 1, raggiunto: false, messaggio: `Payback > ${anni} anni — non raggiunto nel periodo` };
+}
+
+function npv(rate: number, flussi: number[]): number {
+  return flussi.reduce((acc, val, i) => acc + val / Math.pow(1 + rate, i), 0);
+}
+
+function calcolaIrrSicuro(flussi: number[]): number {
   const precision = 1e-6;
-  let x1 = guess;
-  let iter = 0;
-  do {
-    const f1 = flussi.reduce((acc, val, i) => acc + val / Math.pow(1 + x1, i), 0);
-    const f2 = flussi.reduce((acc, val, i) => acc - (i * val) / Math.pow(1 + x1, i + 1), 0);
-    if (Math.abs(f2) < precision) break;
-    const x2 = x1 - f1 / f2;
-    if (Math.abs(x2 - x1) < precision) return x2;
-    x1 = x2;
-    iter++;
-  } while (iter < 1000);
-  return x1;
+  const maxIter = 200;
+
+  // Newton
+  let x = 0.1;
+  for (let iter = 0; iter < maxIter; iter++) {
+    const f1 = npv(x, flussi);
+    const f2 = flussi.reduce((acc, val, i) => acc - (i * val) / Math.pow(1 + x, i + 1), 0);
+    if (Math.abs(f2) < 1e-12) break;
+    const xNew = x - f1 / f2;
+    if (Math.abs(xNew - x) < precision) {
+      if (xNew > -0.999 && xNew < 10) return xNew;
+      break;
+    }
+    x = xNew;
+  }
+
+  // Fallback bisezione
+  let lo = -0.99, hi = 10.0;
+  const fLo = npv(lo, flussi);
+  const fHi = npv(hi, flussi);
+  if (fLo * fHi > 0) return 0;
+  for (let i = 0; i < 100; i++) {
+    const mid = (lo + hi) / 2;
+    const fMid = npv(mid, flussi);
+    if (Math.abs(fMid) < precision) return mid;
+    if (fLo * fMid <= 0) { hi = mid; }
+    else { lo = mid; }
+  }
+  return 0;
+}
+
+export function calcolaIndipendenzaFinanziaria(
+  patrimonioNetto: number,
+  debitiFinanziari: number,
+): IndipendenzaFinanziaria {
+  if (!debitiFinanziari || debitiFinanziari <= 0) {
+    return { indice: 1.0, stato: "VERDE", dettaglio: "Nessun debito finanziario" };
+  }
+  const indice = patrimonioNetto / debitiFinanziari;
+  if (indice >= 1.0) {
+    return { indice: Math.round(indice * 100) / 100, stato: "VERDE", dettaglio: `Patrimonio netto copre i debiti finanziari (x${indice.toFixed(2)})` };
+  }
+  if (indice >= 0.5) {
+    return { indice: Math.round(indice * 100) / 100, stato: "GIALLO", dettaglio: `Patrimonio netto copre il ${Math.round(indice * 100)}% dei debiti` };
+  }
+  return { indice: Math.round(indice * 100) / 100, stato: "ROSSO", dettaglio: `Patrimonio netto insufficiente — copre solo il ${Math.round(indice * 100)}% dei debiti` };
 }

@@ -57,9 +57,21 @@ class CalcolatoreFinanziario:
         return {"conforme": True, "stato": "VERDE", "dettaglio": "Fatturato conforme"}
 
 
-def calcola_business_plan(investimento: float, contributo: float, finanziamento: float) -> dict:
+def calcola_business_plan(
+    investimento: float,
+    contributo: float,
+    finanziamento: float,
+    utile_netto: float = 0,
+) -> dict:
+    try:
+        from numpy_financial import irr as np_irr
+        USE_NUMPY = True
+    except ImportError:
+        USE_NUMPY = False
+
     anni = 5
     tasso_sconto = 0.08
+    rata_finanziamento = finanziamento / anni if anni > 0 else 0
     cashflow = []
     cumulato = -investimento + contributo
     payback_anni = -1
@@ -68,12 +80,12 @@ def calcola_business_plan(investimento: float, contributo: float, finanziamento:
         crescita = 0.15 + (anno - 1) * 0.05
         ricavi = investimento * crescita
         costi_op = investimento * 0.08
-        quota_fin = finanziamento / anni
+        quota_fin = rata_finanziamento
         ammortamento = investimento / anni
         costi = costi_op + quota_fin + ammortamento
         netto = ricavi - costi
         cumulato += netto
-        if payback_anni < 0 and cumulato >= 0:
+        if payback_anni < 0 and cumulato >= investimento:
             payback_anni = anno
         cashflow.append({
             "anno": anno,
@@ -85,11 +97,23 @@ def calcola_business_plan(investimento: float, contributo: float, finanziamento:
     if payback_anni < 0:
         payback_anni = anni + 1
 
-    dscr = (contributo + finanziamento) / investimento if investimento > 0 else 0
+    # DSCR: utile_netto / rata_finanziamento (fallback a EBITDA medio se utile_netto non disponibile)
+    ebitda_medio = sum(c["ricavi"] - investimento * 0.08 for c in cashflow) / anni
+    dscr_base = utile_netto if utile_netto > 0 else ebitda_medio
+    dscr = dscr_base / rata_finanziamento if rata_finanziamento > 0 else 0
 
-    flussi = [c["netto"] for c in cashflow]
-    van = -investimento + sum(v / (1 + tasso_sconto) ** (i + 1) for i, v in enumerate(flussi))
-    irr = _calcola_irr([-investimento] + flussi)
+    flussi_netti = [c["netto"] for c in cashflow]
+    flussi_irr = [-investimento] + flussi_netti
+    van = -investimento + sum(v / (1 + tasso_sconto) ** (i + 1) for i, v in enumerate(flussi_netti))
+
+    if USE_NUMPY and len(flussi_irr) >= 2:
+        try:
+            raw = float(np_irr(flussi_irr))
+            irr = max(-0.999, min(raw, 10.0))
+        except Exception:
+            irr = _calcola_irr_sicura(flussi_irr)
+    else:
+        irr = _calcola_irr_sicura(flussi_irr)
 
     return {
         "dscr": round(dscr, 2),
@@ -103,16 +127,79 @@ def calcola_business_plan(investimento: float, contributo: float, finanziamento:
     }
 
 
-def _calcola_irr(flussi: list, guess: float = 0.1) -> float:
+def _calcola_irr_sicura(flussi: list) -> float:
+    """IRR via Newton con protezione convergenza, fallback a bisezione."""
     precision = 1e-6
-    x1 = guess
-    for _ in range(1000):
-        f1 = sum(v / (1 + x1) ** i for i, v in enumerate(flussi))
-        f2 = sum(-i * v / (1 + x1) ** (i + 1) for i, v in enumerate(flussi))
-        if abs(f2) < precision:
+    max_iter = 200
+
+    def npv(rate):
+        return sum(v / (1 + rate) ** i for i, v in enumerate(flussi))
+
+    def npv_deriv(rate):
+        return sum(-i * v / (1 + rate) ** (i + 1) for i, v in enumerate(flussi))
+
+    # Newton
+    x = 0.1
+    for _ in range(max_iter):
+        f = npv(x)
+        df = npv_deriv(x)
+        if abs(df) < 1e-12:
             break
-        x2 = x1 - f1 / f2
-        if abs(x2 - x1) < precision:
-            return x2
-        x1 = x2
-    return x1
+        x_new = x - f / df
+        if abs(x_new - x) < precision:
+            if -0.999 < x_new < 10.0:
+                return x_new
+            break
+        x = x_new
+
+    # Fallback: bisezione
+    lo, hi = -0.99, 10.0
+    f_lo = npv(lo)
+    f_hi = npv(hi)
+    if f_lo * f_hi > 0:
+        return 0.0
+    for _ in range(100):
+        mid = (lo + hi) / 2
+        f_mid = npv(mid)
+        if abs(f_mid) < precision:
+            return mid
+        if f_lo * f_mid <= 0:
+            hi = mid
+            f_hi = f_mid
+        else:
+            lo = mid
+            f_lo = f_mid
+    return 0.0
+
+
+def calcola_payback(
+    investimento: float,
+    contributo: float,
+    rata_finanziamento: float,
+    proiezioni: list,
+) -> dict:
+    """Calcola il payback period in anni basato sulle proiezioni di cashflow."""
+    cumulato = -investimento + contributo
+    anni = len(proiezioni)
+    for i, p in enumerate(proiezioni):
+        netto = p.get("netto", 0) if isinstance(p, dict) else p
+        cumulato += netto
+        if cumulato >= investimento:
+            return {"anni": i + 1, "raggiunto": True, "messaggio": f"Payback a {i + 1} anni"}
+    return {"anni": anni + 1, "raggiunto": False, "messaggio": f"Payback > {anni} anni — non raggiunto nel periodo"}
+
+
+def calcola_indipendenza_finanziaria(patrimonio_netto: float, debiti_finanziari: float) -> dict:
+    if debiti_finanziari <= 0:
+        return {"indice": 1.0, "stato": "VERDE", "dettaglio": "Nessun debito finanziario"}
+    indice = patrimonio_netto / debiti_finanziari if debiti_finanziari > 0 else 0
+    if indice >= 1.0:
+        stato = "VERDE"
+        dettaglio = f"Indice {indice:.2f} — patrimonio netto copre i debiti finanziari"
+    elif indice >= 0.5:
+        stato = "GIALLO"
+        dettaglio = f"Indice {indice:.2f} — patrimonio netto copre il 50%+ dei debiti"
+    else:
+        stato = "ROSSO"
+        dettaglio = f"Indice {indice:.2f} — patrimonio netto insufficiente a coprire i debiti"
+    return {"indice": round(indice, 2), "stato": stato, "dettaglio": dettaglio}

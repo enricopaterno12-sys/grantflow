@@ -3,7 +3,7 @@ import type { CompanyData, DeepScanResult, EligibilityResult, EligibilityCheck }
 export function verificaEligibilityAutomatica(
   azienda: CompanyData,
   deepScan: DeepScanResult,
-  parametri: { fatturato_minimo: number; bilanci_richiesti: number },
+  parametri: { fatturato_minimo: number; bilanci_richiesti: number; limite_min_investimento: number; limite_max_investimento: number },
   anniAttivita: number,
 ): EligibilityResult {
   const checks: EligibilityCheck[] = [];
@@ -34,8 +34,8 @@ export function verificaEligibilityAutomatica(
   } else {
     checks.push({
       nome: "Codice ATECO",
-      status: "WARN",
-      dettaglio: `ATECO ${ateco} non presente nell'elenco ammessi — verificare compatibilità`,
+      status: "FAIL",
+      dettaglio: `ATECO ${ateco} non presente nell'elenco ammessi — probabilmente non compatibile`,
     });
   }
 
@@ -85,20 +85,54 @@ export function verificaEligibilityAutomatica(
     }
   }
 
-  // 4. Soggetti ammissibili
+  // 4. Dimensione Impresa
   const dim = azienda.dimensione || "";
-  const dimMatch = deepScan.soggetti_ammissibili.some(
-    (s) => dim.toLowerCase().includes(s.toLowerCase()) || s.toLowerCase().includes(dim.toLowerCase()),
-  );
-  if (deepScan.soggetti_ammissibili.length > 0 && !dimMatch && dim) {
-    checks.push({
-      nome: "Dimensione Impresa",
-      status: "WARN",
-      dettaglio: `"${dim}" non tra i soggetti ammessi: ${deepScan.soggetti_ammissibili.join(", ")}`,
-    });
+  if (deepScan.soggetti_ammissibili.length > 0 && dim) {
+    const dimMatch = deepScan.soggetti_ammissibili.some(
+      (s) => dim.toLowerCase().includes(s.toLowerCase()) || s.toLowerCase().includes(dim.toLowerCase()),
+    );
+    if (!dimMatch) {
+      checks.push({
+        nome: "Dimensione Impresa",
+        status: "WARN",
+        dettaglio: `"${dim}" non tra i soggetti ammessi: ${deepScan.soggetti_ammissibili.join(", ")}`,
+      });
+    } else {
+      checks.push({
+        nome: "Dimensione Impresa",
+        status: "PASS",
+        dettaglio: `"${dim}" inclusa tra i soggetti ammessi dal bando`,
+      });
+    }
   }
 
-  // 5. Regione (se specificata nel bando)
+  // 5. Range Investimento
+  const investimento = azienda.investimento || 0;
+  const limiteMin = parametri.limite_min_investimento || 0;
+  const limiteMax = parametri.limite_max_investimento || 0;
+  if (investimento > 0 && (limiteMin > 0 || limiteMax > 0)) {
+    if (limiteMin > 0 && investimento < limiteMin) {
+      checks.push({
+        nome: "Range Investimento",
+        status: "FAIL",
+        dettaglio: `Investimento €${investimento.toLocaleString("it-IT")} < minimo €${limiteMin.toLocaleString("it-IT")}`,
+      });
+    } else if (limiteMax > 0 && investimento > limiteMax) {
+      checks.push({
+        nome: "Range Investimento",
+        status: "WARN",
+        dettaglio: `Investimento €${investimento.toLocaleString("it-IT")} > massimo €${limiteMax.toLocaleString("it-IT")} — verrà troncato al massimale`,
+      });
+    } else {
+      checks.push({
+        nome: "Range Investimento",
+        status: "PASS",
+        dettaglio: `Investimento €${investimento.toLocaleString("it-IT")} nel range €${limiteMin.toLocaleString("it-IT")} – €${limiteMax.toLocaleString("it-IT")}`,
+      });
+    }
+  }
+
+  // 6. Sede Operativa
   const regione = azienda.regione || "";
   if (regione) {
     const reqRegione = deepScan.requisiti_accesso.find((r) =>
@@ -106,11 +140,77 @@ export function verificaEligibilityAutomatica(
     );
     if (reqRegione) {
       checks.push({
-        nome: "Requisiti Territoriali",
+        nome: "Sede Operativa",
         status: "PASS",
-        dettaglio: `Sede in ${regione} — ${reqRegione}`,
+        dettaglio: `Sede in ${regione} — requisito: ${reqRegione}`,
       });
     }
+  }
+
+  // 7. Stato Registrazione (data costituzione valida)
+  if (azienda.data_costituzione) {
+    const dc = new Date(azienda.data_costituzione);
+    if (!isNaN(dc.getTime())) {
+      if (dc > new Date()) {
+        checks.push({
+          nome: "Stato Registrazione",
+          status: "FAIL",
+          dettaglio: `Data costituzione (${azienda.data_costituzione}) è nel futuro — verificare`,
+        });
+      } else {
+        checks.push({
+          nome: "Stato Registrazione",
+          status: "PASS",
+          dettaglio: `Costituita il ${azienda.data_costituzione} — regolare`,
+        });
+      }
+    } else {
+      checks.push({
+        nome: "Stato Registrazione",
+        status: "WARN",
+        dettaglio: "Data costituzione non valida",
+      });
+    }
+  }
+
+  // 8. De Minimis
+  const deMinimisImporto = azienda.de_minimis_importo || 0;
+  if (deMinimisImporto > 0) {
+    if (deMinimisImporto > 300000) {
+      checks.push({
+        nome: "De Minimis",
+        status: "FAIL",
+        dettaglio: `Importo de minimis €${deMinimisImporto.toLocaleString("it-IT")} > massimale €300.000 — cumulo non consentito`,
+      });
+    } else if (deMinimisImporto > 200000) {
+      checks.push({
+        nome: "De Minimis",
+        status: "WARN",
+        dettaglio: `Importo de minimis €${deMinimisImporto.toLocaleString("it-IT")} — vicino al massimale €300.000`,
+      });
+    } else {
+      checks.push({
+        nome: "De Minimis",
+        status: "PASS",
+        dettaglio: `Importo de minimis €${deMinimisImporto.toLocaleString("it-IT")} — sotto massimale €300.000`,
+      });
+    }
+  }
+
+  // 9. Procedure Concorsuali
+  const hasProcedure = azienda.procedure_concorsuali;
+  if (hasProcedure) {
+    checks.push({
+      nome: "Procedure Concorsuali",
+      status: "FAIL",
+      dettaglio: "Procedura concorsuale in corso — non ammissibile alla generalità dei bandi",
+    });
+  } else {
+    checks.push({
+      nome: "Procedure Concorsuali",
+      status: "PASS",
+      dettaglio: "Nessuna procedura concorsuale in corso",
+    });
   }
 
   // Overall

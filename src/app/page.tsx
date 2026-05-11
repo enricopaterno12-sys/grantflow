@@ -64,6 +64,12 @@ export default function Home() {
     ragione_sociale: string; ateco: string; dimensione: string; regione: string;
     fatturato: number; dipendenti: number; data_costituzione: string;
     investimento: number; finanziamento_richiesto: number; visuraFile?: File | null;
+    forma_giuridica: string; partita_iva: string; codice_fiscale: string;
+    sede_legale: string; pec: string;
+    utile_netto: number; debiti_finanziari: number; patrimonio_netto: number;
+    de_minimis_importo: number; de_minimis_regime: string;
+    descrizione_progetto: string; categoria_spesa: string;
+    procedure_concorsuali: boolean;
   }) => {
     if (!bandoFile) return;
     setLoading(true);
@@ -77,6 +83,19 @@ export default function Home() {
       data_costituzione: data.data_costituzione || undefined,
       investimento: data.investimento || undefined,
       finanziamento_richiesto: data.finanziamento_richiesto || undefined,
+      forma_giuridica: data.forma_giuridica || undefined,
+      partita_iva: data.partita_iva || undefined,
+      codice_fiscale: data.codice_fiscale || undefined,
+      sede_legale: data.sede_legale || undefined,
+      pec: data.pec || undefined,
+      utile_netto: data.utile_netto || undefined,
+      debiti_finanziari: data.debiti_finanziari || undefined,
+      patrimonio_netto: data.patrimonio_netto || undefined,
+      de_minimis_importo: data.de_minimis_importo || undefined,
+      de_minimis_regime: data.de_minimis_regime || undefined,
+      descrizione_progetto: data.descrizione_progetto || undefined,
+      categoria_spesa: data.categoria_spesa || undefined,
+      procedure_concorsuali: data.procedure_concorsuali || undefined,
     };
 
     try {
@@ -246,6 +265,7 @@ export default function Home() {
               <CompanyForm
                 visuraPrefill={visuraPrefill}
                 parametriFinanziari={analyzeResult?.parametri_finanziari}
+                regimeBando={analyzeResult?.deep_scan?.regimi_aiuto?.[0]?.tipo?.toLowerCase()}
                 onAnalyze={handleFormSubmit}
                 loading={loading}
               />

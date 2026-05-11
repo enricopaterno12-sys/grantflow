@@ -97,10 +97,11 @@ export async function verificaEligibility(
 export async function generaBusinessPlan(
   scheda: string,
   dati: string,
+  calcolo?: string,
 ): Promise<string> {
   return ask(
     "Sei un progettista senior specializzato in business plan per bandi.",
     BUSINESS_PLAN_TEMPLATE,
-    { scheda, dati },
+    { scheda, dati, calcolo: calcolo || "" },
   );
 }

@@ -9,6 +9,23 @@ export interface CompanyData {
   data_costituzione?: string;
   investimento?: number;
   finanziamento_richiesto?: number;
+  // Dati Giuridici
+  forma_giuridica?: string;
+  partita_iva?: string;
+  codice_fiscale?: string;
+  sede_legale?: string;
+  pec?: string;
+  // Economico-Finanziari
+  utile_netto?: number;
+  debiti_finanziari?: number;
+  patrimonio_netto?: number;
+  // De Minimis
+  de_minimis_importo?: number;
+  de_minimis_regime?: string;
+  // Progetto
+  descrizione_progetto?: string;
+  categoria_spesa?: string;
+  procedure_concorsuali?: boolean;
 }
 
 // ── Financial Parameters ─────────────────────
@@ -139,12 +156,25 @@ export interface AnalyzeResponse {
   visura_data?: { ragione_sociale: string; ateco: string };
 }
 
+export interface IndipendenzaFinanziaria {
+  indice: number;
+  stato: "VERDE" | "GIALLO" | "ROSSO";
+  dettaglio: string;
+}
+
+export interface EligibilityParsed {
+  classificazione: string | null;
+  probabilita: number | null;
+}
+
 export interface VerifyResponse {
   calcolo_finanziario: CalcoloFinanziario;
   valutazione_bilanci: Valutazione;
   valutazione_fatturato: Valutazione;
+  indipendenza_finanziaria?: IndipendenzaFinanziaria;
   eligibility: string;
   eligibility_checks: EligibilityResult;
+  eligibility_parsed?: EligibilityParsed;
   business_plan: string;
   business_plan_data: BusinessPlanResult;
   checklist: ChecklistItem[];

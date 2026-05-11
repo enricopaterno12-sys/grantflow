@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verificaEligibility, generaBusinessPlan } from "@/lib/api/analyzer";
-import { CalcolatoreFinanziario, calcolaBusinessPlan } from "@/lib/api/calculator";
+import { CalcolatoreFinanziario, calcolaBusinessPlan, calcolaIndipendenzaFinanziaria } from "@/lib/api/calculator";
 import { verificaEligibilityAutomatica } from "@/lib/api/eligibility";
 import type { DeepScanResult, EligibilityResult, BusinessPlanResult, ChecklistItem } from "@/types";
 
@@ -27,6 +27,17 @@ export async function POST(request: NextRequest) {
       `Data Costituzione: ${d.data_costituzione || ""}`,
       `Investimento: €${(d.investimento || 0).toLocaleString("it-IT")}`,
       `Finanziamento Richiesto: €${(d.finanziamento_richiesto || 0).toLocaleString("it-IT")}`,
+      `Forma Giuridica: ${d.forma_giuridica || ""}`,
+      `Partita IVA: ${d.partita_iva || ""}`,
+      `Sede Legale: ${d.sede_legale || ""}`,
+      `Utile Netto: €${(d.utile_netto || 0).toLocaleString("it-IT")}`,
+      `Debiti Finanziari: €${(d.debiti_finanziari || 0).toLocaleString("it-IT")}`,
+      `Patrimonio Netto: €${(d.patrimonio_netto || 0).toLocaleString("it-IT")}`,
+      `De Minimis Importo: €${(d.de_minimis_importo || 0).toLocaleString("it-IT")}`,
+      `De Minimis Regime: ${d.de_minimis_regime || ""}`,
+      `Descrizione Progetto: ${d.descrizione_progetto || ""}`,
+      `Categoria Spesa: ${d.categoria_spesa || ""}`,
+      `Procedure Concorsuali: ${d.procedure_concorsuali ? "Sì" : "No"}`,
     ].join("\n");
 
     const calcolatore = new CalcolatoreFinanziario(parametri_finanziari || {});
@@ -46,15 +57,31 @@ export async function POST(request: NextRequest) {
     let eligibility = "";
     let businessPlan = "";
 
+    const calcoloStr = [
+      `Investimento: €${(calcolo.investimento_effettivo || 0).toLocaleString("it-IT")}`,
+      `Contributo: €${(calcolo.contributo || 0).toLocaleString("it-IT")}`,
+      `Finanziamento: €${(calcolo.finanziamento || 0).toLocaleString("it-IT")}`,
+      `Aliquota contributo: ${calcolo.aliquota_contributo || 0}%`,
+      `Aliquota finanziamento: ${calcolo.aliquota_finanziamento || 0}%`,
+    ].join("\n");
+
     try {
       [eligibility, businessPlan] = await Promise.all([
         verificaEligibility(scheda_bando || "", datiStr),
-        generaBusinessPlan(scheda_bando || "", datiStr),
+        generaBusinessPlan(scheda_bando || "", datiStr, calcoloStr),
       ]);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Errore chiamata LLM";
       return NextResponse.json({ detail: message }, { status: 502 });
     }
+
+    // Parse LLM eligibility output into structured fields
+    const classMatch = eligibility.match(/CLASSIFICAZIONE FINALE:\s*\[?(\w+)\]?/i);
+    const probMatch = eligibility.match(/PROBABILITÀ\s*APPROVAZIONE\s*[:\-]?\s*(\d+)/i);
+    const eligibilityParsed = {
+      classificazione: classMatch?.[1]?.toUpperCase() || null,
+      probabilita: probMatch ? parseInt(probMatch[1], 10) : null,
+    };
 
     // Structured eligibility checks
     const deepScanData = (deep_scan || {}) as unknown as DeepScanResult;
@@ -63,7 +90,12 @@ export async function POST(request: NextRequest) {
       eligibilityResult = verificaEligibilityAutomatica(
         d,
         deepScanData,
-        { fatturato_minimo: parametri_finanziari?.fatturato_minimo || 0, bilanci_richiesti: parametri_finanziari?.bilanci_richiesti || 0 },
+        {
+          fatturato_minimo: parametri_finanziari?.fatturato_minimo || 0,
+          bilanci_richiesti: parametri_finanziari?.bilanci_richiesti || 0,
+          limite_min_investimento: parametri_finanziari?.limite_min_investimento || 0,
+          limite_max_investimento: parametri_finanziari?.limite_max_investimento || 0,
+        },
         anniBil,
       );
     } catch {
@@ -75,11 +107,23 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    // Business plan data
-    const bpData = calcolaBusinessPlan(
-      calcolo.investimento_effettivo || d.investimento || 0,
-      calcolo.contributo || 0,
-      calcolo.finanziamento || 0,
+    // Business plan data with fallback defaults
+    const investEff = calcolo.investimento_effettivo || d.investimento || 0;
+    let bpData: BusinessPlanResult;
+    if (investEff > 0) {
+      bpData = calcolaBusinessPlan(investEff, calcolo.contributo || 0, calcolo.finanziamento || 0, d.utile_netto || 0);
+    } else {
+      const defaultCf = [1, 2, 3, 4, 5].map((anno) => ({ anno, ricavi: 0, costi: 0, netto: 0 }));
+      bpData = {
+        dscr: 0, payback_anni: 6, van: 0, irr: 0, cashflow: defaultCf,
+        contributo: 0, finanziamento: 0, investimento_totale: 0,
+      };
+    }
+
+    // Financial independence
+    const indipendenzaFinanziaria = calcolaIndipendenzaFinanziaria(
+      d.patrimonio_netto || 0,
+      d.debiti_finanziari || 0,
     );
 
     // Document checklist
@@ -99,8 +143,10 @@ export async function POST(request: NextRequest) {
       calcolo_finanziario: calcolo,
       valutazione_bilanci: valBil,
       valutazione_fatturato: valFat,
+      indipendenza_finanziaria: indipendenzaFinanziaria,
       eligibility,
       eligibility_checks: eligibilityResult,
+      eligibility_parsed: eligibilityParsed,
       business_plan: businessPlan,
       business_plan_data: bpData,
       checklist,

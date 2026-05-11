@@ -28,11 +28,18 @@ function StatCard({ label, value, valueClass = "text-white" }: { label: string; 
   );
 }
 
-function MiniCard({ label, value, warn }: { label: string; value: React.ReactNode; warn?: boolean }) {
+function MiniCard({ label, value, semaforo, messaggio }: { label: string; value: React.ReactNode; semaforo?: "VERDE" | "GIALLO" | "ROSSO"; messaggio?: string }) {
+  const borderMap = { VERDE: "border-emerald-500/20", GIALLO: "border-yellow-500/20", ROSSO: "border-red-500/20" };
+  const dotMap = { VERDE: "bg-emerald-500", GIALLO: "bg-yellow-500", ROSSO: "bg-red-500" };
+  const border = semaforo ? borderMap[semaforo] : "border-white/[0.04]";
   return (
-    <div className={`glass rounded-xl px-3 py-2.5 ${warn ? "border border-yellow-500/20" : ""}`}>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-500">{label}</p>
+    <div className={`glass rounded-xl px-3 py-2.5 border ${border}`}>
+      <div className="flex items-center gap-1.5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-500">{label}</p>
+        {semaforo && <span className={`w-1.5 h-1.5 rounded-full ${dotMap[semaforo]}`} />}
+      </div>
       <p className="text-sm font-bold mt-0.5 text-white">{value}</p>
+      {messaggio && <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">{messaggio}</p>}
     </div>
   );
 }
@@ -42,6 +49,7 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
     calcolo_finanziario: calcolo,
     valutazione_bilanci: valBil,
     valutazione_fatturato: valFat,
+    indipendenza_finanziaria: indFin,
     eligibility,
     eligibility_checks: eligibilityChecks,
     business_plan: businessPlan,
@@ -170,26 +178,54 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
             <StatCard label="Finanziamento Agevolato" value={`€${finanzValue?.toLocaleString() ?? "—"}`} valueClass="text-emerald-400" />
           </div>
 
-          {/* Riga 3 — Terziarie */}
+          {/* Riga 3 — Terziarie con semaforo */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <MiniCard label="DSCR" value={
               bpData?.dscr == null || bpData.dscr === 0
-                ? <span title="Dati insufficienti per il calcolo" className="text-gray-500 text-sm">N/C</span>
+                ? <span className="text-gray-500 text-sm">N/C</span>
                 : bpData.dscr.toFixed(2)
-            } warn={bpData?.dscr == null || bpData.dscr === 0} />
-            <MiniCard label="Payback" value={bpData?.payback_anni != null ? `${bpData.payback_anni} anni` : "—"} />
+            } semaforo={
+              bpData?.dscr == null || bpData.dscr === 0 ? "GIALLO" :
+              bpData.dscr >= 1.3 ? "VERDE" :
+              bpData.dscr >= 1.0 ? "GIALLO" : "ROSSO"
+            } messaggio={
+              bpData?.dscr == null || bpData.dscr === 0 ? "Dati insufficienti" :
+              bpData.dscr >= 1.3 ? "Ottimo" :
+              bpData.dscr >= 1.0 ? "Adeguato" : "Sotto soglia (min 1.0)"
+            } />
+            <MiniCard label="Payback" value={bpData?.payback_anni != null ? `${bpData.payback_anni} anni` : "—"} semaforo={
+              bpData?.payback_anni == null ? "GIALLO" :
+              bpData.payback_anni <= 3 ? "VERDE" :
+              bpData.payback_anni <= 5 ? "GIALLO" : "ROSSO"
+            } messaggio={
+              bpData?.payback_anni == null ? "Dati insufficienti" :
+              bpData.payback_anni <= 3 ? "Recupero rapido" :
+              bpData.payback_anni <= 5 ? "Recupero standard" : "Recupero lungo"
+            } />
             <MiniCard label="VAN" value={
               bpData?.van != null
-                ? (bpData.van < 0
-                  ? <span title="Progetto non redditizio allo stato attuale" className="text-red-400">⚠️ €{bpData.van.toLocaleString()}</span>
-                  : `€${bpData.van.toLocaleString()}`)
+                ? `€${bpData.van.toLocaleString()}`
                 : "—"
-            } warn={bpData?.van != null && bpData.van < 0} />
+            } semaforo={
+              bpData?.van == null ? "GIALLO" :
+              bpData.van > 0 ? "VERDE" : "ROSSO"
+            } messaggio={
+              bpData?.van == null ? "Dati insufficienti" :
+              bpData.van > 0 ? "Progetto redditizio" : "Progetto non redditizio"
+            } />
             <MiniCard label="IRR" value={
-              bpData?.irr != null && (bpData.irr > 1000 || bpData.irr < 0)
-                ? <span title="Valore fuori range — verificare le proiezioni finanziarie" className="text-yellow-400">N/A</span>
+              bpData?.irr != null && (bpData.irr > 1000 || bpData.irr <= 0)
+                ? <span className="text-yellow-400">N/A</span>
                 : bpData?.irr != null ? `${bpData.irr.toFixed(2)}%` : "—"
-            } warn={bpData?.irr != null && (bpData.irr > 1000 || bpData.irr < 0)} />
+            } semaforo={
+              bpData?.irr == null || bpData.irr > 1000 || bpData.irr <= 0 ? "GIALLO" :
+              bpData.irr > 10 ? "VERDE" :
+              bpData.irr > 5 ? "GIALLO" : "ROSSO"
+            } messaggio={
+              bpData?.irr == null || bpData.irr > 1000 || bpData.irr <= 0 ? "Valore fuori range" :
+              bpData.irr > 10 ? "Rendimento elevato" :
+              bpData.irr > 5 ? "Rendimento adeguato" : "Rendimento basso"
+            } />
           </div>
 
           {/* Eligibility Table (P6) */}
@@ -262,6 +298,13 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
                 <span className={`text-sm font-semibold ${valFat.stato === "VERDE" ? "text-emerald-400" : valFat.stato === "ROSSO" ? "text-red-400" : "text-yellow-400"}`}>{valFat.stato}</span>
                 <p className="text-gray-500 text-sm mt-1">{valFat.dettaglio}</p>
               </div>
+              {indFin && (
+                <div>
+                  <span className="text-gray-500 text-sm">Indipendenza Finanziaria:</span>{" "}
+                  <span className={`text-sm font-semibold ${indFin.stato === "VERDE" ? "text-emerald-400" : indFin.stato === "ROSSO" ? "text-red-400" : "text-yellow-400"}`}>{indFin.stato}</span>
+                  <p className="text-gray-500 text-sm mt-1">{indFin.dettaglio}</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
