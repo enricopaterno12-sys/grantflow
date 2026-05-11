@@ -122,30 +122,39 @@ export default function Home() {
   }, [bandoFile, analyzeResult]);
 
   const handleSaveAnalysis = useCallback(async (name: string) => {
-    const snapshot = {
-      analyzeResult,
-      verifyResult,
-      companyData,
-      bandoInfo,
+    const snapshot = { analyzeResult, verifyResult, companyData, bandoInfo };
+    const tempId = `local_${Date.now()}`;
+
+    // 1. Optimistic: show in sidebar immediately
+    const optimistic: Analysis = {
+      id: tempId,
+      user_id: "anonymous",
+      name,
+      data: snapshot,
+      created_at: new Date().toISOString(),
+      is_pinned: false,
     };
+    setAnalyses((prev) => [optimistic, ...prev]);
+    setCurrentAnalysisId(tempId);
 
-    const { data, error: saveError } = await supabase
-      .from("analyses")
-      .insert({
-        user_id: "anonymous",
-        name,
-        data: snapshot,
-        is_pinned: false,
-      })
-      .select()
-      .single();
+    // 2. Attempt Supabase save (may fail if schema mismatch)
+    try {
+      const { data, error } = await supabase
+        .from("analyses")
+        .insert({ user_id: "anonymous", name, data: snapshot, is_pinned: false })
+        .select()
+        .single();
 
-    if (!saveError && data) {
-      setAnalyses((prev) => [data as Analysis, ...prev]);
-      setCurrentAnalysisId(data.id);
-      setRefreshKey((k) => k + 1);
-    } else if (saveError) {
-      console.error("Save to Supabase failed:", saveError.message);
+      if (!error && data) {
+        // Replace temp entry with real server record
+        setAnalyses((prev) => prev.map((a) => (a.id === tempId ? (data as Analysis) : a)));
+        setCurrentAnalysisId(data.id);
+        setRefreshKey((k) => k + 1);
+      } else if (error) {
+        console.error("Supabase save failed:", error.message);
+      }
+    } catch (err) {
+      console.error("Supabase save threw:", err);
     }
 
     resetAnalysis();
