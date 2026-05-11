@@ -99,6 +99,7 @@ export default function Home() {
         dati_azienda: company,
         parametri_finanziari: analyzeResult.parametri_finanziari,
         scheda_bando: analyzeResult.scheda,
+        deep_scan: (analyzeResult.deep_scan || {}) as any,
       });
       setVerifyResult(result);
       setCompanyData(company);
@@ -226,7 +227,7 @@ export default function Home() {
           {/* Results Step */}
           {step === "results" && verifyResult && companyData && (
             <div className="animate-slide-up">
-              <ResultsView response={verifyResult} azienda={companyData} />
+              <ResultsView response={verifyResult} azienda={companyData} deepScan={analyzeResult?.deep_scan as any} />
             </div>
           )}
 

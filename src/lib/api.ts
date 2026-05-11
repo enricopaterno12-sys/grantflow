@@ -18,8 +18,14 @@ export async function verifyEligibility(data: {
   dati_azienda: CompanyData;
   parametri_finanziari: ParametriFinanziari;
   scheda_bando: string;
+  deep_scan: Record<string, unknown>;
 }) {
   const res = await api.post("/verify", data);
+  return res.data;
+}
+
+export async function exportDocument(type: "docx" | "pptx", data: Record<string, unknown>) {
+  const res = await api.post("/export", { type, data }, { responseType: "blob" });
   return res.data;
 }
 

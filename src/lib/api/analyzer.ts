@@ -1,5 +1,6 @@
 import Groq from "groq-sdk";
 import {
+  DEEP_SCAN_TEMPLATE,
   PARAMETRI_FINANZIARI_TEMPLATE,
   ANALYSIS_TEMPLATE,
   ELIGIBILITY_TEMPLATE,
@@ -17,16 +18,17 @@ function getClient(): Groq {
 async function ask(
   system: string,
   userTemplate: string,
-  params: Record<string, string>
+  params: Record<string, string>,
+  temperature = 0,
 ): Promise<string> {
   const groq = getClient();
   const userContent = Object.entries(params).reduce(
     (acc, [key, val]) => acc.replace(`{${key}}`, val),
-    userTemplate
+    userTemplate,
   );
   const response = await groq.chat.completions.create({
     model: MODEL_NAME,
-    temperature: 0,
+    temperature,
     messages: [
       { role: "system", content: system },
       { role: "user", content: userContent },
@@ -35,16 +37,30 @@ async function ask(
   return response.choices[0]?.message?.content || "";
 }
 
+function parseJsonStrict(raw: string): Record<string, unknown> {
+  const pulita = raw.replace(/^```(?:json)?\s*|\s*```$/gm, "").trim();
+  return JSON.parse(pulita);
+}
+
+export async function deepScanBando(testoBando: string): Promise<Record<string, unknown>> {
+  const risposta = await ask(
+    "Esegui un deep scan del bando. Estrai ogni dato strutturato con articoli di riferimento.",
+    DEEP_SCAN_TEMPLATE,
+    { testo_bando: testoBando },
+    0.1,
+  );
+  return parseJsonStrict(risposta);
+}
+
 export async function estraiParametriFinanziari(
-  testoBando: string
+  testoBando: string,
 ): Promise<Record<string, number>> {
   const risposta = await ask(
     "Sei un analista bandi. Estrai parametri finanziari come JSON puro.",
     PARAMETRI_FINANZIARI_TEMPLATE,
-    { testo_bando: testoBando }
+    { testo_bando: testoBando },
   );
-  const pulita = risposta.replace(/^```(?:json)?\s*|\s*```$/gm, "").trim();
-  const parametri = JSON.parse(pulita);
+  const parametri = parseJsonStrict(risposta);
   const keys = [
     "aliquota_contributo",
     "aliquota_finanziamento",
@@ -56,35 +72,35 @@ export async function estraiParametriFinanziari(
   for (const key of keys) {
     if (!(key in parametri)) parametri[key] = 0;
   }
-  return parametri;
+  return parametri as Record<string, number>;
 }
 
 export async function analizzaBando(testoBando: string): Promise<string> {
   return ask(
-    "Sei un analista bandi Invitalia e PNRR. Estrai parametri precisi, niente interpretazioni creative.",
+    "Sei un analista bandi Invitalia e PNRR. Estrai parametri precisi, cita sempre l'articolo del bando.",
     ANALYSIS_TEMPLATE,
-    { testo_bando: testoBando }
+    { testo_bando: testoBando },
   );
 }
 
 export async function verificaEligibility(
   scheda: string,
-  dati: string
+  dati: string,
 ): Promise<string> {
   return ask(
-    "Sei un Senior Consultant in Finanza Agevolata. Verifica, calcola, contesta. Precisione chirurgica.",
+    "Sei un Senior Consultant in Finanza Agevolata. Verifica, calcola, contesta. Precisione chirurgica. Cita articoli.",
     ELIGIBILITY_TEMPLATE,
-    { scheda, dati }
+    { scheda, dati },
   );
 }
 
 export async function generaBusinessPlan(
   scheda: string,
-  dati: string
+  dati: string,
 ): Promise<string> {
   return ask(
     "Sei un progettista senior specializzato in business plan per bandi.",
     BUSINESS_PLAN_TEMPLATE,
-    { scheda, dati }
+    { scheda, dati },
   );
 }
