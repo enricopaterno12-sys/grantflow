@@ -86,7 +86,7 @@ export function calcolaBusinessPlan(
     const costi = costiOp + quotaFin + ammortamento;
     const netto = ricavi - costi;
     cumulato += netto;
-    if (paybackAnni < 0 && cumulato >= investimento) paybackAnni = anno;
+    if (paybackAnni < 0 && cumulato >= 0) paybackAnni = anno;
     cashflow.push({
       anno,
       ricavi: Math.round(ricavi),
@@ -128,7 +128,7 @@ export function calcolaPayback(
   const anni = proiezioni.length;
   for (let i = 0; i < anni; i++) {
     cumulato += proiezioni[i].netto;
-    if (cumulato >= investimento) {
+    if (cumulato >= 0) {
       return { anni: i + 1, raggiunto: true, messaggio: `Payback a ${i + 1} anni` };
     }
   }
@@ -159,15 +159,15 @@ function calcolaIrrSicuro(flussi: number[]): number {
 
   // Fallback bisezione
   let lo = -0.99, hi = 10.0;
-  const fLo = npv(lo, flussi);
-  const fHi = npv(hi, flussi);
+  let fLo = npv(lo, flussi);
+  let fHi = npv(hi, flussi);
   if (fLo * fHi > 0) return 0;
   for (let i = 0; i < 100; i++) {
     const mid = (lo + hi) / 2;
     const fMid = npv(mid, flussi);
     if (Math.abs(fMid) < precision) return mid;
-    if (fLo * fMid <= 0) { hi = mid; }
-    else { lo = mid; }
+    if (fLo * fMid <= 0) { hi = mid; fHi = fMid; }
+    else { lo = mid; fLo = fMid; }
   }
   return 0;
 }

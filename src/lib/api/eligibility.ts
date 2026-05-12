@@ -134,7 +134,7 @@ export function verificaEligibilityAutomatica(
 
   // 6. Sede Operativa
   const regione = azienda.regione || "";
-  if (regione) {
+  if (regione && deepScan.requisiti_accesso.length > 0) {
     const reqRegione = deepScan.requisiti_accesso.find((r) =>
       r.toLowerCase().includes("region") || r.toLowerCase().includes("sede"),
     );
@@ -143,6 +143,12 @@ export function verificaEligibilityAutomatica(
         nome: "Sede Operativa",
         status: "PASS",
         dettaglio: `Sede in ${regione} — requisito: ${reqRegione}`,
+      });
+    } else {
+      checks.push({
+        nome: "Sede Operativa",
+        status: "WARN",
+        dettaglio: `Sede in ${regione} — nessun vincolo territoriale specifico rilevato dal bando`,
       });
     }
   }

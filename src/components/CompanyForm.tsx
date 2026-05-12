@@ -256,7 +256,7 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
               ]} placeholder="Seleziona..." />
             </div>
           </div>
-          {!form.procedure_concorsuali && regimeBando === "de_minimis" && (
+          {!form.procedure_concorsuali && regimeBando?.includes("de minimis") && (
             <div className="p-4 rounded-xl bg-emerald-900/10 border border-emerald-500/10">
               <p className="text-sm text-emerald-400">Verifica De Minimis necessaria per questo bando — assicurati che l'importo indicato non superi il massimale di €300.000</p>
             </div>

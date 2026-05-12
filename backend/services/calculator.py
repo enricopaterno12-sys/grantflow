@@ -85,7 +85,7 @@ def calcola_business_plan(
         costi = costi_op + quota_fin + ammortamento
         netto = ricavi - costi
         cumulato += netto
-        if payback_anni < 0 and cumulato >= investimento:
+        if payback_anni < 0 and cumulato >= 0:
             payback_anni = anno
         cashflow.append({
             "anno": anno,
@@ -184,7 +184,7 @@ def calcola_payback(
     for i, p in enumerate(proiezioni):
         netto = p.get("netto", 0) if isinstance(p, dict) else p
         cumulato += netto
-        if cumulato >= investimento:
+        if cumulato >= 0:
             return {"anni": i + 1, "raggiunto": True, "messaggio": f"Payback a {i + 1} anni"}
     return {"anni": anni + 1, "raggiunto": False, "messaggio": f"Payback > {anni} anni — non raggiunto nel periodo"}
 
