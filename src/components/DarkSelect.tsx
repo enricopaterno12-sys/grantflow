@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 
 interface Option {
@@ -18,17 +19,19 @@ interface Props {
 
 export default function DarkSelect({ value, onChange, options, placeholder = "Seleziona...", className = "" }: Props) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
 
   useEffect(() => {
+    if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      const insideBtn = btnRef.current?.contains(target);
+      const insideMenu = menuRef.current?.contains(target);
+      if (!insideBtn && !insideMenu) setOpen(false);
     };
-    if (open) {
-      document.addEventListener("mousedown", handler);
-    }
+    document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
@@ -47,7 +50,7 @@ export default function DarkSelect({ value, onChange, options, placeholder = "Se
   const selected = options.find((o) => o.value === value);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative">
       <button
         ref={btnRef}
         type="button"
@@ -60,10 +63,11 @@ export default function DarkSelect({ value, onChange, options, placeholder = "Se
         <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
 
-      {open && coords && (
+      {open && coords && typeof document !== "undefined" && createPortal(
         <div
+          ref={menuRef}
           style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width, zIndex: 9999 }}
-          className="bg-[#18181B] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/40 py-1 animate-fade-in overflow-hidden"
+          className="bg-[#18181B] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/40 py-1 overflow-hidden"
         >
           {options.map((opt) => (
             <button
@@ -79,7 +83,8 @@ export default function DarkSelect({ value, onChange, options, placeholder = "Se
               {opt.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
