@@ -19,12 +19,20 @@ interface Props {
 export default function DarkSelect({ value, onChange, options, placeholder = "Seleziona...", className = "" }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
-    if (open) document.addEventListener("mousedown", handler);
+    if (open) {
+      document.addEventListener("mousedown", handler);
+      if (btnRef.current) {
+        const rect = btnRef.current.getBoundingClientRect();
+        setCoords({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+      }
+    }
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
@@ -33,6 +41,7 @@ export default function DarkSelect({ value, onChange, options, placeholder = "Se
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen(!open)}
         className={`w-full flex items-center justify-between px-3.5 py-2.5 bg-white/[0.04] border border-white/[0.06] rounded-xl text-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/40 ${className} ${
@@ -45,7 +54,8 @@ export default function DarkSelect({ value, onChange, options, placeholder = "Se
 
       {open && (
         <div
-          className="absolute z-50 mt-1.5 w-full bg-[#18181B] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/40 py-1 animate-fade-in overflow-hidden"
+          style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width, zIndex: 9999 }}
+          className="bg-[#18181B] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/40 py-1 animate-fade-in overflow-hidden"
         >
           {options.map((opt) => (
             <button

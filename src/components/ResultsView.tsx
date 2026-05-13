@@ -120,14 +120,7 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
           <h2 className="text-xl font-semibold text-white">Risultati Analisi</h2>
           <StatusBadge stato={stato} probabilita={prob} />
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => handleExport("docx")} disabled={exporting === "docx"}
-            className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 rounded-xl transition-all duration-200 disabled:opacity-50 shadow-lg shadow-emerald-900/20"
-          >{exporting === "docx" ? "Generazione..." : "📄 Scarica Dossier DOCX"}</button>
-          <button onClick={() => handleExport("pptx")} disabled={exporting === "pptx"}
-            className="px-4 py-2 text-sm font-medium text-white bg-white/[0.06] hover:bg-white/[0.10] rounded-xl transition-all duration-200 disabled:opacity-50 border border-white/[0.06]"
-          >{exporting === "pptx" ? "Generazione..." : "📊 Scarica Pitch PPTX"}</button>
-        </div>
+
       </div>
 
       {/* Tab Navigation */}

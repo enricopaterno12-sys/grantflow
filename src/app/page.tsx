@@ -27,6 +27,7 @@ export default function Home() {
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const resetAnalysis = useCallback(() => {
     setStep("upload");
@@ -172,6 +173,45 @@ export default function Home() {
     resetAnalysis();
   }, [resetAnalysis]);
 
+  const handleSelectAnalysis = useCallback(async (id: string) => {
+    setLoadingHistory(true);
+    setError("");
+
+    try {
+      const { data, error } = await supabase
+        .from("analyses")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error || !data) throw new Error(error?.message || "Analisi non trovata");
+
+      const snap = (data as Analysis).data as Record<string, unknown>;
+      const savedVerify = snap?.verifyResult as VerifyResponse | undefined;
+      const savedCompany = snap?.companyData as CompanyData | undefined;
+      const savedAnalyze = snap?.analyzeResult as AnalyzeResponse | undefined;
+      const savedBandoInfo = snap?.bandoInfo as { nome: string; ente: string } | undefined;
+
+      if (!savedVerify || !savedCompany) {
+        throw new Error("Dati analisi incompleti o formato non valido");
+      }
+
+      setVerifyResult(savedVerify);
+      setCompanyData(savedCompany);
+      setAnalyzeResult(savedAnalyze || null);
+      setBandoInfo(savedBandoInfo || null);
+      setCurrentAnalysisId(id);
+
+      await new Promise((r) => setTimeout(r, 400));
+      setStep("results");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Errore caricamento analisi";
+      setError(msg);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
+
   const defaultAnalysisName = companyData
     ? `Analisi ${companyData.ragione_sociale} - ${new Date().toLocaleDateString("it-IT")}`
     : `Analisi ${new Date().toLocaleDateString("it-IT")}`;
@@ -184,6 +224,7 @@ export default function Home() {
         analyses={analyses}
         onAnalysesChange={setAnalyses}
         refreshKey={refreshKey}
+        onSelectAnalysis={handleSelectAnalysis}
       />
 
       <main className="flex-1 overflow-y-auto">
@@ -232,21 +273,34 @@ export default function Home() {
             })}
           </div>
 
+          {loadingHistory && (
+            <div className="flex items-center justify-center py-20 animate-fade-in">
+              <div className="text-center space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center mx-auto">
+                  <svg className="w-6 h-6 text-emerald-400 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" opacity="0.25" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <p className="text-sm text-gray-400">Caricamento analisi in corso...</p>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="glass rounded-xl p-4 border border-red-500/20">
               <p className="text-sm text-red-400">{error}</p>
             </div>
           )}
 
-          {/* Phase 1 */}
-          {step === "upload" && (
+          {/* Loading history — hide everything else */}
+          {!loadingHistory && step === "upload" && (
             <div className="animate-slide-up pt-8">
               <UploadBando onFileSelected={handleBandoSelected} />
             </div>
           )}
 
-          {/* Phase 2 (P3) */}
-          {step === "form" && (
+          {!loadingHistory && step === "form" && (
             <div className="animate-slide-up space-y-6">
               {bandoInfo && (
                 <div className="glass rounded-2xl p-4 flex items-center gap-4">
@@ -272,15 +326,13 @@ export default function Home() {
             </div>
           )}
 
-          {/* Phase 3 (P4) */}
-          {step === "loading" && (
+          {!loadingHistory && step === "loading" && (
             <div className="pt-12">
               <LoadingProgress isLoading={loading} />
             </div>
           )}
 
-          {/* Phase 4 */}
-          {step === "results" && verifyResult && companyData && (
+          {!loadingHistory && step === "results" && verifyResult && companyData && (
             <div className="animate-slide-up">
               <ResultsView response={verifyResult} azienda={companyData} deepScan={analyzeResult?.deep_scan as any} />
               <div className="mt-8 flex items-center justify-between p-5 glass rounded-2xl">

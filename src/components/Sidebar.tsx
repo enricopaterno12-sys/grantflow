@@ -12,6 +12,7 @@ interface Props {
   analyses: Analysis[];
   onAnalysesChange: (analyses: Analysis[]) => void;
   refreshKey?: number;
+  onSelectAnalysis?: (id: string) => void;
 }
 
 function getMeta(a: Analysis) {
@@ -34,7 +35,7 @@ function StatusDot({ stato }: { stato: string }) {
   return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${m[stato] || m["N/D"]}`} />;
 }
 
-export default function Sidebar({ activeId, onNewAnalysis, analyses, onAnalysesChange, refreshKey }: Props) {
+export default function Sidebar({ activeId, onNewAnalysis, analyses, onAnalysesChange, refreshKey, onSelectAnalysis }: Props) {
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
@@ -108,7 +109,8 @@ export default function Sidebar({ activeId, onNewAnalysis, analyses, onAnalysesC
           return (
             <div
               key={a.id}
-              className={`group flex items-start gap-2 px-3 py-2.5 rounded-xl transition-all duration-200 ${
+              onClick={() => onSelectAnalysis?.(a.id)}
+              className={`group flex items-start gap-2 px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer ${
                 activeId === a.id ? "bg-white/[0.06] border border-white/[0.06]" : "hover:bg-white/[0.03] border border-transparent"
               }`}
             >

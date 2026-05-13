@@ -53,7 +53,14 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
     const errs: Record<string, boolean> = {};
     if (!form.ragione_sociale.trim()) errs.ragione_sociale = true;
     if (!form.ateco.trim()) errs.ateco = true;
+    if (!form.regione.trim()) errs.regione = true;
+    if (!form.forma_giuridica.trim()) errs.forma_giuridica = true;
+    if (!form.partita_iva.trim()) errs.partita_iva = true;
     if (form.fatturato <= 0) errs.fatturato = true;
+    if (form.dipendenti <= 0) errs.dipendenti = true;
+    if (form.investimento <= 0) errs.investimento = true;
+    if (form.finanziamento_richiesto <= 0) errs.finanziamento_richiesto = true;
+    if (!form.descrizione_progetto.trim()) errs.descrizione_progetto = true;
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
     onAnalyze({ ...form, visuraFile });
@@ -82,11 +89,11 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div>
-            <label className={labelClass}>Ragione Sociale {submitted && errors.ragione_sociale && <span className="text-red-400">*</span>}</label>
+            <label className={labelClass}>Ragione Sociale <span className="text-red-400">*</span></label>
             <input type="text" value={form.ragione_sociale} onChange={(e) => handleChange("ragione_sociale", e.target.value)} placeholder="Mia Impresa Srl" className={errors.ragione_sociale ? errorInputClass : inputClass} />
           </div>
           <div>
-            <label className={labelClass}>Codice ATECO {submitted && errors.ateco && <span className="text-red-400">*</span>}</label>
+            <label className={labelClass}>Codice ATECO <span className="text-red-400">*</span></label>
             <input type="text" value={form.ateco} onChange={(e) => handleChange("ateco", e.target.value)} placeholder="62.01" className={errors.ateco ? errorInputClass : inputClass} />
             <p className="text-[11px] text-gray-600 mt-1">Formato: XX.XX.XX — es. 62.01.09</p>
           </div>
@@ -98,7 +105,7 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
             ]} placeholder="Seleziona..." />
           </div>
           <div>
-            <label className={labelClass}>Regione</label>
+            <label className={labelClass}>Regione <span className="text-red-400">*</span></label>
             <input type="text" value={form.regione} onChange={(e) => handleChange("regione", e.target.value)} placeholder="Puglia" className={inputClass} />
           </div>
           <div>
@@ -119,7 +126,7 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div>
-            <label className={labelClass}>Forma Giuridica</label>
+            <label className={labelClass}>Forma Giuridica <span className="text-red-400">*</span></label>
             <DarkSelect value={form.forma_giuridica} onChange={(v) => handleChange("forma_giuridica", v)} options={[
               { value: "Srl", label: "Srl" }, { value: "Spa", label: "Spa" },
               { value: "Srl Unipersonale", label: "Srl Unipersonale" },
@@ -130,7 +137,7 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
             ]} placeholder="Seleziona..." />
           </div>
           <div>
-            <label className={labelClass}>Partita IVA</label>
+            <label className={labelClass}>Partita IVA <span className="text-red-400">*</span></label>
             <input type="text" value={form.partita_iva} onChange={(e) => handleChange("partita_iva", e.target.value)} placeholder="01234567890" className={inputClass} />
           </div>
           <div>
@@ -159,11 +166,11 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div>
-            <label className={labelClass}>Fatturato (€) {submitted && errors.fatturato && <span className="text-red-400">*</span>}</label>
+            <label className={labelClass}>Fatturato (€) <span className="text-red-400">*</span></label>
             <input type="number" value={form.fatturato || ""} onChange={(e) => handleChange("fatturato", Number(e.target.value))} min={0} placeholder="0" className={errors.fatturato ? errorInputClass : inputClass} />
           </div>
           <div>
-            <label className={labelClass}>Dipendenti</label>
+            <label className={labelClass}>Dipendenti <span className="text-red-400">*</span></label>
             <input type="number" value={form.dipendenti || ""} onChange={(e) => handleChange("dipendenti", Number(e.target.value))} min={0} placeholder="0" className={inputClass} />
           </div>
           <div>
@@ -179,14 +186,14 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
             <input type="number" value={form.patrimonio_netto || ""} onChange={(e) => handleChange("patrimonio_netto", Number(e.target.value))} min={0} placeholder="0" className={inputClass} />
           </div>
           <div>
-            <label className={labelClass}>Investimento (€)</label>
+            <label className={labelClass}>Investimento (€) <span className="text-red-400">*</span></label>
             <input type="number" value={form.investimento || ""} onChange={(e) => handleChange("investimento", Number(e.target.value))} min={0} step={1000} placeholder="0" className={inputClass} />
             {form.investimento > 0 && rangeMin != null && rangeMax != null && (
               <p className="text-[11px] text-emerald-500/70 mt-1">Range ammesso dal bando: €{rangeMin.toLocaleString()} — €{rangeMax.toLocaleString()}</p>
             )}
           </div>
           <div>
-            <label className={labelClass}>Finanziamento Richiesto (€)</label>
+            <label className={labelClass}>Finanziamento Richiesto (€) <span className="text-red-400">*</span></label>
             <input type="number" value={form.finanziamento_richiesto || ""} onChange={(e) => handleChange("finanziamento_richiesto", Number(e.target.value))} min={0} step={1000} placeholder="0" className={inputClass} />
           </div>
         </div>
@@ -232,7 +239,7 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
         </div>
         <div className="space-y-5">
           <div>
-            <label className={labelClass}>Descrizione Progetto</label>
+            <label className={labelClass}>Descrizione Progetto <span className="text-red-400">*</span></label>
             <textarea value={form.descrizione_progetto} onChange={(e) => handleChange("descrizione_progetto", e.target.value)} placeholder="Descrivi brevemente il progetto oggetto della richiesta di agevolazione..." className={`${inputClass} min-h-[100px] resize-y`} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
