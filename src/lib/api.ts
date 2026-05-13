@@ -6,13 +6,13 @@ const baseURL = FASTAPI_URL || "/api";
 
 const api = axios.create({
   baseURL,
-  timeout: 90000,
+  timeout: 180000,
 });
 
 export async function analyzeBando(file: File) {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await api.post("/analyze", formData);
+  const res = await api.post("/analyze", formData, { timeout: 300000 });
   return res.data;
 }
 

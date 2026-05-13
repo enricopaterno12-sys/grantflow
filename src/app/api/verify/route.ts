@@ -70,10 +70,8 @@ export async function POST(request: NextRequest) {
     const schedaTroncata = (scheda_bando || "").slice(0, 8000);
 
     try {
-      [eligibility, businessPlan] = await Promise.all([
-        verificaEligibility(schedaTroncata, datiStr),
-        generaBusinessPlan(schedaTroncata, datiStr, calcoloStr),
-      ]);
+      eligibility = await verificaEligibility(schedaTroncata, datiStr);
+      businessPlan = await generaBusinessPlan(schedaTroncata, datiStr, calcoloStr);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Errore chiamata LLM";
       return NextResponse.json({ detail: message }, { status: 502 });
