@@ -20,7 +20,7 @@ export default function DarkSelect({ value, onChange, options, placeholder = "Se
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+  const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -28,13 +28,21 @@ export default function DarkSelect({ value, onChange, options, placeholder = "Se
     };
     if (open) {
       document.addEventListener("mousedown", handler);
+    }
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const handleToggle = () => {
+    if (!open) {
       if (btnRef.current) {
         const rect = btnRef.current.getBoundingClientRect();
         setCoords({ top: rect.bottom + 6, left: rect.left, width: rect.width });
       }
+      setOpen(true);
+    } else {
+      setOpen(false);
     }
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  };
 
   const selected = options.find((o) => o.value === value);
 
@@ -43,7 +51,7 @@ export default function DarkSelect({ value, onChange, options, placeholder = "Se
       <button
         ref={btnRef}
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={handleToggle}
         className={`w-full flex items-center justify-between px-3.5 py-2.5 bg-white/[0.04] border border-white/[0.06] rounded-xl text-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/40 ${className} ${
           selected ? "text-white" : "text-gray-600"
         }`}
@@ -52,7 +60,7 @@ export default function DarkSelect({ value, onChange, options, placeholder = "Se
         <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
 
-      {open && (
+      {open && coords && (
         <div
           style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width, zIndex: 9999 }}
           className="bg-[#18181B] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/40 py-1 animate-fade-in overflow-hidden"
