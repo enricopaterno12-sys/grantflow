@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 import UploadBando from "@/components/UploadBando";
 import CompanyForm from "@/components/CompanyForm";
@@ -28,6 +28,7 @@ export default function Home() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const analyzePromiseRef = useRef<Promise<AnalyzeResponse> | null>(null);
 
   const resetAnalysis = useCallback(() => {
     setStep("upload");
@@ -45,20 +46,25 @@ export default function Home() {
   const handleBandoSelected = useCallback(async (file: File) => {
     setBandoFile(file);
     setError("");
-
-    try {
-      const result = await analyzeBando(file);
-      setBandoInfo({
-        nome: result.nome_bando || result.nome || "Bando caricato",
-        ente: result.ente_erogatore || result.ente || "Ente identificato",
-      });
-      setAnalyzeResult(result);
-      if (result.visura_data) setVisuraPrefill(result.visura_data);
-    } catch {
-      setBandoInfo({ nome: file.name, ente: "Ente in fase di identificazione" });
-    }
-
+    setBandoInfo({ nome: file.name, ente: "Analisi in corso..." });
     setStep("form");
+
+    const promise = analyzeBando(file)
+      .then((result) => {
+        setAnalyzeResult(result);
+        setBandoInfo({
+          nome: result.nome_bando || result.nome || file.name,
+          ente: result.ente_erogatore || result.ente || "Ente identificato",
+        });
+        if (result.visura_data) setVisuraPrefill(result.visura_data);
+        return result;
+      })
+      .catch(() => {
+        setBandoInfo({ nome: file.name, ente: "Ente in fase di identificazione" });
+        return null;
+      });
+
+    analyzePromiseRef.current = promise as Promise<AnalyzeResponse>;
   }, []);
 
   const handleFormSubmit = useCallback(async (data: {
@@ -105,7 +111,7 @@ export default function Home() {
         if (enrichResult.visura_data) setVisuraPrefill(enrichResult.visura_data);
       }
 
-      const analyzeRes = analyzeResult || await analyzeBando(bandoFile);
+      const analyzeRes = analyzeResult || (analyzePromiseRef.current ? await analyzePromiseRef.current : await analyzeBando(bandoFile));
       if (!analyzeResult) setAnalyzeResult(analyzeRes);
 
       const verifyRes = await verifyEligibility({
