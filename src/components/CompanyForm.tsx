@@ -79,7 +79,7 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-3xl mx-auto">
       {/* Sezione A — Dati Anagrafici */}
-      <div className="glass rounded-2xl p-6">
+      <div className="glass rounded-2xl p-6 overflow-visible">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><Building className="w-4 h-4 text-emerald-400" /></div>
           <div>
@@ -116,7 +116,7 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
       </div>
 
       {/* Sezione B — Dati Giuridici */}
-      <div className="glass rounded-2xl p-6">
+      <div className="glass rounded-2xl p-6 overflow-visible">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><Building className="w-4 h-4 text-emerald-400" /></div>
           <div>
@@ -156,7 +156,7 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
       </div>
 
       {/* Sezione C — Dati Economico-Finanziari */}
-      <div className="glass rounded-2xl p-6">
+      <div className="glass rounded-2xl p-6 overflow-visible">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><Building className="w-4 h-4 text-emerald-400" /></div>
           <div>
@@ -200,7 +200,7 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
       </div>
 
       {/* Sezione D — De Minimis */}
-      <div className="glass rounded-2xl p-6">
+      <div className="glass rounded-2xl p-6 overflow-visible">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><Building className="w-4 h-4 text-emerald-400" /></div>
           <div>
@@ -229,7 +229,7 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
       </div>
 
       {/* Sezione E — Progetto */}
-      <div className="glass rounded-2xl p-6">
+      <div className="glass rounded-2xl p-6 overflow-visible">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><Building className="w-4 h-4 text-emerald-400" /></div>
           <div>
@@ -272,7 +272,7 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
       </div>
 
       {/* Visura Upload */}
-      <div className="glass rounded-2xl p-6">
+      <div className="glass rounded-2xl p-6 overflow-visible">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center"><Upload className="w-4 h-4 text-gray-400" /></div>
           <div>

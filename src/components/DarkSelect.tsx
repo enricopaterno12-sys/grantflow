@@ -23,6 +23,8 @@ export default function DarkSelect({ value, onChange, options, placeholder = "Se
   const menuRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
 
+  const safeOptions = options && options.length > 0 ? options : null;
+
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -47,10 +49,10 @@ export default function DarkSelect({ value, onChange, options, placeholder = "Se
     }
   };
 
-  const selected = options.find((o) => o.value === value);
+  const selected = safeOptions?.find((o) => o.value === value);
 
   return (
-    <div className="relative">
+    <div className="relative overflow-visible">
       <button
         ref={btnRef}
         type="button"
@@ -66,10 +68,10 @@ export default function DarkSelect({ value, onChange, options, placeholder = "Se
       {open && coords && typeof document !== "undefined" && createPortal(
         <div
           ref={menuRef}
-          style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width, zIndex: 9999 }}
-          className="bg-[#18181B] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/40 py-1 overflow-hidden"
+          style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width, zIndex: 99999 }}
+          className="bg-zinc-900 border border-white/[0.08] rounded-xl shadow-2xl shadow-black/60 py-1 max-h-60 overflow-y-auto"
         >
-          {options.map((opt) => (
+          {safeOptions ? safeOptions.map((opt) => (
             <button
               key={opt.value}
               type="button"
@@ -77,12 +79,14 @@ export default function DarkSelect({ value, onChange, options, placeholder = "Se
               className={`w-full text-left px-3.5 py-2.5 text-sm transition-colors ${
                 opt.value === value
                   ? "bg-emerald-500/10 text-emerald-400"
-                  : "text-gray-300 hover:bg-white/[0.04] hover:text-white"
+                  : "text-gray-100 hover:bg-white/[0.04] hover:text-white"
               }`}
             >
               {opt.label}
             </button>
-          ))}
+          )) : (
+            <div className="px-3.5 py-2.5 text-sm text-gray-400">Nessuna opzione</div>
+          )}
         </div>,
         document.body
       )}
