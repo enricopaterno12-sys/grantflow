@@ -49,7 +49,7 @@ export default function Home() {
     setBandoInfo({ nome: file.name, ente: "Analisi in corso..." });
     setStep("form");
 
-    const promise = analyzeBando(file)
+    analyzePromiseRef.current = analyzeBando(file)
       .then((result) => {
         setAnalyzeResult(result);
         setBandoInfo({
@@ -59,12 +59,10 @@ export default function Home() {
         if (result.visura_data) setVisuraPrefill(result.visura_data);
         return result;
       })
-      .catch(() => {
+      .catch((err) => {
         setBandoInfo({ nome: file.name, ente: "Ente in fase di identificazione" });
-        return null;
-      });
-
-    analyzePromiseRef.current = promise as Promise<AnalyzeResponse>;
+        throw err;
+      }) as Promise<AnalyzeResponse>;
   }, []);
 
   const handleFormSubmit = useCallback(async (data: {
@@ -111,8 +109,16 @@ export default function Home() {
         if (enrichResult.visura_data) setVisuraPrefill(enrichResult.visura_data);
       }
 
-      const analyzeRes = analyzeResult || (analyzePromiseRef.current ? await analyzePromiseRef.current : await analyzeBando(bandoFile));
-      if (!analyzeResult) setAnalyzeResult(analyzeRes);
+      let analyzeRes = analyzeResult;
+      if (!analyzeRes) {
+        try {
+          analyzeRes = analyzePromiseRef.current ? await analyzePromiseRef.current : await analyzeBando(bandoFile);
+        } catch {
+          analyzeRes = await analyzeBando(bandoFile);
+        }
+        if (!analyzeRes) throw new Error("Analisi bando fallita");
+        setAnalyzeResult(analyzeRes);
+      }
 
       const verifyRes = await verifyEligibility({
         dati_azienda: company,
