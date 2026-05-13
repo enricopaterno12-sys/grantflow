@@ -67,10 +67,12 @@ export async function POST(request: NextRequest) {
       `Aliquota finanziamento: ${calcolo.aliquota_finanziamento || 0}%`,
     ].join("\n");
 
+    const schedaTroncata = (scheda_bando || "").slice(0, 8000);
+
     try {
       [eligibility, businessPlan] = await Promise.all([
-        verificaEligibility(scheda_bando || "", datiStr),
-        generaBusinessPlan(scheda_bando || "", datiStr, calcoloStr),
+        verificaEligibility(schedaTroncata, datiStr),
+        generaBusinessPlan(schedaTroncata, datiStr, calcoloStr),
       ]);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Errore chiamata LLM";

@@ -21,11 +21,12 @@ export async function POST(request: NextRequest) {
 
     const bandoBuffer = Buffer.from(await fileField.arrayBuffer());
     const testo = await extractPdfText(bandoBuffer);
+    const testoMax = testo.slice(0, 10000);
 
     const [scheda, parametri, deepScan] = await Promise.all([
-      analizzaBando(testo),
-      estraiParametriFinanziari(testo).catch(() => ({})),
-      deepScanBando(testo).catch(() => ({})),
+      analizzaBando(testoMax),
+      estraiParametriFinanziari(testoMax).catch(() => ({})),
+      deepScanBando(testoMax).catch(() => ({})),
     ]);
 
     const result: Record<string, unknown> = {

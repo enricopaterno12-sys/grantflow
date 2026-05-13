@@ -29,6 +29,7 @@ async function ask(
   const response = await groq.chat.completions.create({
     model: MODEL_NAME,
     temperature,
+    max_tokens: 4096,
     messages: [
       { role: "system", content: system },
       { role: "user", content: userContent },
