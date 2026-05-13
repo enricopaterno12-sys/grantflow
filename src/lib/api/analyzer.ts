@@ -9,7 +9,7 @@ import {
 import { splitIntoChunks, delay } from "./chunker";
 
 const MODEL_NAME = "llama-3.3-70b-versatile";
-const CHUNK_SIZE = 8000;
+const CHUNK_SIZE = 10000;
 const CHUNK_DELAY_MS = 20000;
 
 function getClient(): Groq {
