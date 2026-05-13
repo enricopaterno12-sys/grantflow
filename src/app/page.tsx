@@ -111,7 +111,7 @@ export default function Home() {
       const verifyRes = await verifyEligibility({
         dati_azienda: company,
         parametri_finanziari: analyzeRes.parametri_finanziari,
-        scheda_bando: analyzeRes.scheda || analyzeRes.testo_estratto || "",
+        scheda_bando: analyzeRes.riepilogo || analyzeRes.scheda || analyzeRes.testo_estratto || "",
         deep_scan: (analyzeRes.deep_scan || {}) as any,
       });
 

@@ -151,6 +151,7 @@ export interface Analysis {
 export interface AnalyzeResponse {
   testo_estratto: string;
   scheda: string;
+  riepilogo?: string;
   parametri_finanziari: ParametriFinanziari;
   deep_scan: DeepScanResult;
   visura_data?: { ragione_sociale: string; ateco: string };

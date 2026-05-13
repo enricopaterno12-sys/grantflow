@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractPdfText, parseVisura } from "@/lib/api/parser";
-import { analizzaBando, estraiParametriFinanziari, deepScanBando } from "@/lib/api/analyzer";
+import { processFullBando } from "@/lib/api/analyzer";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 600;
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,19 +21,15 @@ export async function POST(request: NextRequest) {
 
     const bandoBuffer = Buffer.from(await fileField.arrayBuffer());
     const testo = await extractPdfText(bandoBuffer);
-    const testoMax = testo.slice(0, 10000);
 
-    const [scheda, parametri, deepScan] = await Promise.all([
-      analizzaBando(testoMax),
-      estraiParametriFinanziari(testoMax).catch(() => ({})),
-      deepScanBando(testoMax).catch(() => ({})),
-    ]);
+    const { riepilogo, deep_scan, parametri_finanziari } = await processFullBando(testo);
 
     const result: Record<string, unknown> = {
       testo_estratto: testo.slice(0, 3000),
-      scheda,
-      parametri_finanziari: parametri,
-      deep_scan: deepScan,
+      scheda: riepilogo,
+      riepilogo,
+      parametri_finanziari,
+      deep_scan,
     };
 
     if (visuraField && visuraField instanceof File) {
