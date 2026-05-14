@@ -9,6 +9,7 @@ import { parseValutazioneTecnica } from "@/lib/valutazioneTecnicaParser";
 import type {
   VerifyResponse, CompanyData, DeepScanResult,
   EligibilityResult, BusinessPlanResult, ChecklistItem,
+  VerifyEligibilityRagionata,
 } from "@/types";
 
 type ResultTab = "overview" | "requirements" | "financial" | "documents";
@@ -28,9 +29,9 @@ function StatCard({ label, value, valueClass = "text-white" }: { label: string; 
   );
 }
 
-function MiniCard({ label, value, semaforo, messaggio }: { label: string; value: React.ReactNode; semaforo?: "VERDE" | "GIALLO" | "ROSSO"; messaggio?: string }) {
-  const borderMap = { VERDE: "border-emerald-500/20", GIALLO: "border-yellow-500/20", ROSSO: "border-red-500/20" };
-  const dotMap = { VERDE: "bg-emerald-500", GIALLO: "bg-yellow-500", ROSSO: "bg-red-500" };
+function MiniCard({ label, value, semaforo, messaggio }: { label: string; value: React.ReactNode; semaforo?: "VERDE" | "GIALLO" | "ROSSO" | "GRIGIO"; messaggio?: string }) {
+  const borderMap = { VERDE: "border-emerald-500/20", GIALLO: "border-yellow-500/20", ROSSO: "border-red-500/20", GRIGIO: "border-gray-500/20" };
+  const dotMap = { VERDE: "bg-emerald-500", GIALLO: "bg-yellow-500", ROSSO: "bg-red-500", GRIGIO: "bg-gray-500" };
   const border = semaforo ? borderMap[semaforo] : "border-white/[0.04]";
   return (
     <div className={`glass rounded-xl px-3 py-2.5 border ${border}`}>
@@ -52,6 +53,8 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
     indipendenza_finanziaria: indFin,
     eligibility,
     eligibility_checks: eligibilityChecks,
+    eligibility_strutturata: eligStrutt,
+    technical_notes: technicalNotes,
     business_plan: businessPlan,
     business_plan_data: bpData,
     checklist,
@@ -60,6 +63,11 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
   const [tab, setTab] = useState<ResultTab>("overview");
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>(checklist || []);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [showTechnicalNotes, setShowTechnicalNotes] = useState(false);
+
+  // Prefer structured R1 data over regex-parsed legacy string
+  const ratingStrutturato = eligStrutt?.rating;
+  const probStrutturata = eligStrutt?.probabilita;
 
   const probMatch = eligibility.match(/PROBABILITÀ\s*APPROVAZIONE\s*[:\-]?\s*(\d+)/i);
   const probabilita = probMatch ? parseInt(probMatch[1]) : null;
@@ -105,8 +113,8 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
     { key: "documents", label: "Documenti Generati" },
   ];
 
-  const overall = eligibilityChecks?.overall || stato;
-  const prob = eligibilityChecks?.probabilita || probabilita;
+  const overall = ratingStrutturato || eligibilityChecks?.overall || stato;
+  const prob = probStrutturata ?? eligibilityChecks?.probabilita ?? probabilita;
   const probColor = prob != null ? (prob >= 75 ? "text-emerald-400" : prob >= 40 ? "text-yellow-400" : "text-red-400") : "text-gray-400";
   const investValue = calcolo.investimento_effettivo;
   const contribValue = calcolo.contributo;
@@ -147,11 +155,13 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
               <div className={`mt-3 px-4 py-4 rounded-xl text-center ${
                 overall === "VERDE" ? "bg-emerald-900/20 border border-emerald-500/20" :
                 overall === "ROSSO" ? "bg-red-900/20 border border-red-500/20" :
+                overall === "GRIGIO" ? "bg-gray-900/20 border border-gray-500/20" :
                 "bg-yellow-900/20 border border-yellow-500/20"
               }`}>
                 <span className={`text-3xl font-bold ${
                   overall === "VERDE" ? "text-emerald-400" :
-                  overall === "ROSSO" ? "text-red-400" : "text-yellow-400"
+                  overall === "ROSSO" ? "text-red-400" :
+                  overall === "GRIGIO" ? "text-gray-400" : "text-yellow-400"
                 }`}>{overall}</span>
               </div>
             </div>
@@ -220,6 +230,34 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
               bpData.irr > 5 ? "Rendimento adeguato" : "Rendimento basso"
             } />
           </div>
+
+          {/* Structured Verifiche from DeepSeek-R1 */}
+          {eligStrutt?.verifiche && eligStrutt.verifiche.length > 0 && (
+            <div className="glass rounded-2xl p-5">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Verifiche Eligibility (R1)</h3>
+              <div className="space-y-2">
+                {eligStrutt.verifiche.map((v, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02]">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-white">{v.nome}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{v.dettaglio}</p>
+                    </div>
+                    <span className={`ml-3 text-xs font-medium px-2.5 py-1 rounded-full ${
+                      v.rating === "VERDE" ? "bg-emerald-900/30 text-emerald-400" :
+                      v.rating === "GIALLO" ? "bg-yellow-900/30 text-yellow-400" :
+                      v.rating === "ROSSO" ? "bg-red-900/30 text-red-400" :
+                      "bg-gray-900/30 text-gray-400"
+                    }`}>{v.rating}</span>
+                  </div>
+                ))}
+              </div>
+              {eligStrutt.de_minimis_check && (
+                <div className="mt-3 p-3 rounded-xl bg-white/[0.02]">
+                  <p className="text-xs text-gray-400">De Minimis: <span className="text-white font-medium">{eligStrutt.de_minimis_check.regime_applicabile}</span> — Residuo: <span className="text-white font-medium">€{eligStrutt.de_minimis_check.importo_residuo.toLocaleString()}</span></p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Eligibility Table (P6) */}
           <div className="glass rounded-2xl p-5">
@@ -329,6 +367,29 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
               )}
             </div>
           </div>
+
+          {/* Mappatura Costi da DeepSeek-R1 */}
+          {eligStrutt?.costi_mappati && eligStrutt.costi_mappati.length > 0 && (
+            <div className="glass rounded-2xl p-5">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Mappatura Costi per Categoria</h3>
+              <div className="overflow-hidden rounded-xl border border-white/[0.04]">
+                <table className="w-full text-sm">
+                  <thead><tr className="bg-white/[0.02]">
+                    <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Categoria</th>
+                    <th className="text-right px-4 py-2.5 text-gray-400 font-medium">Importo</th>
+                    <th className="text-right px-4 py-2.5 text-gray-400 font-medium">Aliquota</th>
+                  </tr></thead>
+                  <tbody>{eligStrutt.costi_mappati.map((c, i) => (
+                    <tr key={i} className="border-t border-white/[0.04]">
+                      <td className="px-4 py-2.5 text-white">{c.categoria}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-200">€{c.importo.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right text-emerald-400 font-medium">{c.aliquota}%</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <div className="glass rounded-2xl p-5">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Massimali di Spesa</h3>
@@ -492,6 +553,22 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
                   <div><p className="text-sm font-medium text-white">{exporting === "pptx" ? "Generazione in corso..." : "Pitch di Presentazione (PPTX)"}</p><p className="text-xs text-gray-500 mt-0.5">Slide overview, financials, requisiti bando, eligibility checks per il cliente</p></div>
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Technical Notes — Reasoning Trace da DeepSeek-R1 */}
+          {technicalNotes && (
+            <div className="glass rounded-2xl p-5">
+              <button onClick={() => setShowTechnicalNotes(!showTechnicalNotes)}
+                className="flex items-center gap-2 w-full text-left">
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em]">Note Tecniche (Traccia di Ragionamento R1)</h3>
+                <svg className={`w-4 h-4 text-gray-500 transition-transform ${showTechnicalNotes ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showTechnicalNotes && (
+                <pre className="mt-3 text-xs text-gray-400 whitespace-pre-wrap font-mono bg-white/[0.02] rounded-xl p-4 max-h-64 overflow-y-auto border border-white/[0.04]">{technicalNotes}</pre>
+              )}
             </div>
           )}
 

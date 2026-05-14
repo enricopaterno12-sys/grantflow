@@ -154,6 +154,77 @@ CLASSIFICAZIONE FINALE: [VERDE] / [GIALLO] / [ROSSO]
 PROBABILITÀ APPROVAZIONE: [X]%
 `;
 
+export const ELIGIBILITY_TEMPLATE_R1 = `
+Sei un analista bandi senior specializzato in Finanza Agevolata, PNRR e Invitalia.
+Esegui l'analisi di eligibility in TRE FASI di ragionamento, poi produci output JSON.
+
+DATI AZIENDA:
+{dati}
+
+SCHEDA BANDO:
+{scheda}
+
+PROCESSO DI RAGIONAMENTO (3 FASI):
+FASE 1 — EXTRACTION: Estrai da scheda bando: soglie min/max investimento, ATECO ammessi/esclusi,
+aliquote contributo/finanziamento, requisiti bilanci/fatturato, regime De Minimis, criteri premialità.
+
+FASE 2 — CROSS-CHECK: Confronta ogni dato azienda con requisiti bando. Calcola: importo esatto contributo
+e finanziamento in base all'investimento dichiarato. Verifica premialità e De Minimis.
+
+FASE 3 — UNCERTAINTY VERIFICATION (SCUDO ANTI-ERRORE): Se per qualsiasi verifica non hai elementi
+sufficienti nel bando, assegna rating GRIGIO invece di forzare VERDE/GIALLO/ROSSO.
+
+REGOLE FERREE:
+1. GRIGIO = il bando non specifica questo requisito in modo chiaro (non è un WARN, è "non determinabile")
+2. Calcolo contributo: investimento * aliquota_contributo / 100
+3. Calcolo finanziamento: investimento * aliquota_finanziamento / 100
+4. Se investimento > limite_max, usa limite_max come base di calcolo
+5. De Minimis: verifica se importo azienda + nuovo contributo <= 300.000€ (triennio)
+6. Premialità: se il bando prevede premialità, calcola l'incremento percentuale
+
+OUTPUT: RISPONDI SOLO CON UN OGGETTO JSON VALIDO. NIENTE MARKDOWN, NIENTE TESTO AGGIUNTIVO.
+
+Formato JSON richiesto:
+{
+  "rating": "VERDE|GIALLO|ROSSO|GRIGIO",
+  "probabilita": 0-100,
+  "costi_mappati": [
+    {
+      "categoria": "Software",
+      "importo": 50000,
+      "aliquota": 50,
+      "articolo": "Art. X"
+    }
+  ],
+  "calcolo_preciso": {
+    "contributo_calcolato": 25000,
+    "finanziamento_calcolato": 25000,
+    "premialita": {
+      "descrizione": "Maggiorazione 10% per assunzioni under 36",
+      "importo_aggiuntivo": 5000,
+      "articolo": "Art. Y"
+    },
+    "dettaglio": "Spiegazione del calcolo effettuato"
+  },
+  "verifiche": [
+    {
+      "nome": "ATECO",
+      "rating": "VERDE|GIALLO|ROSSO|GRIGIO",
+      "dettaglio": "Confronto ATECO azienda vs bando",
+      "riferimento": "Art. Z"
+    }
+  ],
+  "de_minimis_check": {
+    "regime_applicabile": "De Minimis|GBER|N/D",
+    "importo_residuo": 250000,
+    "superato": false
+  }
+}
+
+IMPORTANTE: Se un requisito non è chiaramente specificato nel bando, usa rating GRIGIO.
+Non forzare mai una classificazione quando mancano i dati. GRIGIO è la risposta onesta.
+`;
+
 export const BUSINESS_PLAN_TEMPLATE = `
 Sei un consulente senior specializzato in Business Plan per bandi di finanziamento e innovazione.
 

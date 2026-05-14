@@ -2,18 +2,18 @@ import {
   DEEP_SCAN_TEMPLATE,
   PARAMETRI_FINANZIARI_TEMPLATE,
   ELIGIBILITY_TEMPLATE,
+  ELIGIBILITY_TEMPLATE_R1,
   BUSINESS_PLAN_TEMPLATE,
 } from "./templates";
 
-const MODEL_NAME = "deepseek-chat";
+const MODEL_NAME = "deepseek-reasoner";
 const API_BASE = "https://api.deepseek.com";
 
 async function callDeepSeek(
   system: string,
   userContent: string,
   maxTokens = 4096,
-  temperature = 0,
-): Promise<string> {
+): Promise<{ content: string; reasoningContent?: string }> {
   const key = process.env.DEEPSEEK_API_KEY;
   if (!key) throw new Error("DEEPSEEK_API_KEY environment variable is not set");
 
@@ -22,7 +22,6 @@ async function callDeepSeek(
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     body: JSON.stringify({
       model: MODEL_NAME,
-      temperature,
       max_tokens: maxTokens,
       messages: [
         { role: "system", content: system },
@@ -37,20 +36,24 @@ async function callDeepSeek(
   }
 
   const data = await response.json();
-  return data.choices?.[0]?.message?.content || "";
+  const message = data.choices?.[0]?.message || {};
+  return {
+    content: message.content || "",
+    reasoningContent: message.reasoning_content || undefined,
+  };
 }
 
 async function ask(
   system: string,
   userTemplate: string,
   params: Record<string, string>,
-  temperature = 0,
 ): Promise<string> {
   const userContent = Object.entries(params).reduce(
     (acc, [key, val]) => acc.replace(`{${key}}`, val),
     userTemplate,
   );
-  return callDeepSeek(system, userContent, 4096, temperature);
+  const result = await callDeepSeek(system, userContent, 4096);
+  return result.content;
 }
 
 function parseJsonStrict(raw: string): Record<string, unknown> {
@@ -63,7 +66,6 @@ export async function deepScanBando(testoBando: string): Promise<Record<string, 
     "Esegui un deep scan del bando. Estrai ogni dato strutturato con articoli di riferimento.",
     DEEP_SCAN_TEMPLATE,
     { testo_bando: testoBando },
-    0.1,
   );
   return parseJsonStrict(risposta);
 }
@@ -196,6 +198,28 @@ export async function verificaEligibility(
     ELIGIBILITY_TEMPLATE,
     { scheda, dati },
   );
+}
+
+export async function verificaEligibilityRagionata(
+  scheda: string,
+  dati: string,
+): Promise<{ result: Record<string, unknown>; technicalNotes: string }> {
+  const userContent = ELIGIBILITY_TEMPLATE_R1
+    .replace("{dati}", dati)
+    .replace("{scheda}", scheda);
+
+  const { content, reasoningContent } = await callDeepSeek(
+    "Sei un analista bandi senior. Produci SOLO JSON valido, senza markdown né testo extra.",
+    userContent,
+    8192,
+  );
+
+  const parsed = parseJsonStrict(content);
+  const technicalNotes = reasoningContent
+    ? reasoningContent.substring(0, 3000)
+    : "";
+
+  return { result: parsed, technicalNotes };
 }
 
 export async function generaBusinessPlan(

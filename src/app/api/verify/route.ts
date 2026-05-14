@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verificaEligibility, generaBusinessPlan } from "@/lib/api/analyzer";
+import { verificaEligibilityRagionata, generaBusinessPlan } from "@/lib/api/analyzer";
 import { CalcolatoreFinanziario, calcolaBusinessPlan, calcolaIndipendenzaFinanziaria } from "@/lib/api/calculator";
 import { verificaEligibilityAutomatica } from "@/lib/api/eligibility";
-import type { DeepScanResult, EligibilityResult, BusinessPlanResult, ChecklistItem } from "@/types";
+import type { DeepScanResult, EligibilityResult, BusinessPlanResult, ChecklistItem, VerifyEligibilityRagionata } from "@/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -57,6 +57,8 @@ export async function POST(request: NextRequest) {
     const valFat = calcolatore.valida_fatturato(d.fatturato || 0);
 
     let eligibility = "";
+    let eligibilityStrutturata: VerifyEligibilityRagionata | undefined;
+    let technicalNotes = "";
     let businessPlan = "";
 
     const calcoloStr = [
@@ -68,19 +70,22 @@ export async function POST(request: NextRequest) {
     ].join("\n");
 
     try {
-      eligibility = await verificaEligibility(scheda_bando || "", datiStr);
+      const ragionata = await verificaEligibilityRagionata(scheda_bando || "", datiStr);
+      const r = ragionata.result as unknown as VerifyEligibilityRagionata;
+      eligibilityStrutturata = r;
+      technicalNotes = ragionata.technicalNotes;
+      // Backward-compatible eligibility summary string
+      eligibility = generaEligibilitySummary(r);
       businessPlan = await generaBusinessPlan(scheda_bando || "", datiStr, calcoloStr);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Errore chiamata LLM";
       return NextResponse.json({ detail: message }, { status: 502 });
     }
 
-    // Parse LLM eligibility output into structured fields
-    const classMatch = eligibility.match(/CLASSIFICAZIONE FINALE:\s*\[?(\w+)\]?/i);
-    const probMatch = eligibility.match(/PROBABILITÀ\s*APPROVAZIONE\s*[:\-]?\s*(\d+)/i);
+    // Eligibility parsed from structured data
     const eligibilityParsed = {
-      classificazione: classMatch?.[1]?.toUpperCase() || null,
-      probabilita: probMatch ? parseInt(probMatch[1], 10) : null,
+      classificazione: eligibilityStrutturata?.rating || null,
+      probabilita: eligibilityStrutturata?.probabilita || null,
     };
 
     // Structured eligibility checks
@@ -147,6 +152,8 @@ export async function POST(request: NextRequest) {
       eligibility,
       eligibility_checks: eligibilityResult,
       eligibility_parsed: eligibilityParsed,
+      eligibility_strutturata: eligibilityStrutturata,
+      technical_notes: technicalNotes,
       business_plan: businessPlan,
       business_plan_data: bpData,
       checklist,
@@ -155,4 +162,30 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : "Errore sconosciuto";
     return NextResponse.json({ detail: message }, { status: 400 });
   }
+}
+
+function generaEligibilitySummary(r: VerifyEligibilityRagionata): string {
+  const lines: string[] = [];
+  lines.push("## VALUTAZIONE_TECNICA\n");
+  for (const v of r.verifiche || []) {
+    lines.push(`**${v.nome}:** ${v.dettaglio} — [${v.rating}]${v.riferimento ? " (" + v.riferimento + ")" : ""}`);
+  }
+  if (r.calcolo_preciso) {
+    lines.push(`\n**Calcolo:** ${r.calcolo_preciso.dettaglio}`);
+    if (r.calcolo_preciso.premialita) {
+      lines.push(`**Premialità:** ${r.calcolo_preciso.premialita.descrizione} (+€${r.calcolo_preciso.premialita.importo_aggiuntivo.toLocaleString("it-IT")})`);
+    }
+  }
+  if (r.de_minimis_check) {
+    lines.push(`\n**De Minimis:** Regime ${r.de_minimis_check.regime_applicabile}, residuo €${r.de_minimis_check.importo_residuo.toLocaleString("it-IT")}`);
+  }
+  lines.push(`\n## TABELLA_DATI`);
+  lines.push(`| Parametro | Esito |`);
+  lines.push(`|-----------|-------|`);
+  for (const v of r.verifiche || []) {
+    lines.push(`| ${v.nome} | ${v.rating} |`);
+  }
+  lines.push(`\nCLASSIFICAZIONE FINALE: [${r.rating || "N/D"}]`);
+  lines.push(`PROBABILITÀ APPROVAZIONE: ${r.probabilita || 0}%`);
+  return lines.join("\n");
 }

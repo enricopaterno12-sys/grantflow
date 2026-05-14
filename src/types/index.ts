@@ -108,6 +108,49 @@ export interface EligibilityResult {
   motivazioni: string;
 }
 
+// ── DeepSeek-R1 Structured Eligibility ────────
+export interface CostoMappato {
+  categoria: string;
+  importo: number;
+  aliquota: number;
+  articolo?: string;
+}
+
+export interface Premialita {
+  descrizione: string;
+  importo_aggiuntivo: number;
+  articolo?: string;
+}
+
+export interface CalcoloPreciso {
+  contributo_calcolato: number;
+  finanziamento_calcolato: number;
+  premialita?: Premialita;
+  dettaglio: string;
+}
+
+export interface VerificaSingola {
+  nome: string;
+  rating: "VERDE" | "GIALLO" | "ROSSO" | "GRIGIO";
+  dettaglio: string;
+  riferimento?: string;
+}
+
+export interface DeMinimisCheck {
+  regime_applicabile: string;
+  importo_residuo: number;
+  superato?: boolean;
+}
+
+export interface VerifyEligibilityRagionata {
+  rating: "VERDE" | "GIALLO" | "ROSSO" | "GRIGIO";
+  probabilita: number;
+  costi_mappati: CostoMappato[];
+  calcolo_preciso: CalcoloPreciso;
+  verifiche: VerificaSingola[];
+  de_minimis_check: DeMinimisCheck;
+}
+
 // ── Business Plan ─────────────────────────────
 export interface CashflowProjection {
   anno: number;
@@ -176,6 +219,8 @@ export interface VerifyResponse {
   eligibility: string;
   eligibility_checks: EligibilityResult;
   eligibility_parsed?: EligibilityParsed;
+  eligibility_strutturata?: VerifyEligibilityRagionata;
+  technical_notes?: string;
   business_plan: string;
   business_plan_data: BusinessPlanResult;
   checklist: ChecklistItem[];
