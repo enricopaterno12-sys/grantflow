@@ -6,33 +6,43 @@ import {
   BUSINESS_PLAN_TEMPLATE,
 } from "./templates";
 
-const MODEL_NAME = "deepseek-reasoner";
-const API_BASE = "https://api.deepseek.com";
+const DEEPSEEK_BASE = "https://api.deepseek.com";
+const DEEPSEEK_MODEL = "deepseek-reasoner";
+const GROQ_BASE = "https://api.groq.com/openai/v1";
+const GROQ_MODEL = "mixtral-8x7b-32768";
 
-async function callDeepSeek(
+async function callProvider(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
   system: string,
   userContent: string,
-  maxTokens = 4096,
+  maxTokens: number,
+  isReasoner: boolean,
 ): Promise<{ content: string; reasoningContent?: string }> {
-  const key = process.env.DEEPSEEK_API_KEY;
-  if (!key) throw new Error("DEEPSEEK_API_KEY environment variable is not set");
+  const body: Record<string, unknown> = {
+    model,
+    max_tokens: maxTokens,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: userContent },
+    ],
+  };
+  // DeepSeek-R1 does not support temperature; Groq and other providers do
+  if (!isReasoner) body.temperature = 0;
 
-  const response = await fetch(`${API_BASE}/chat/completions`, {
+  const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      model: MODEL_NAME,
-      max_tokens: maxTokens,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: userContent },
-      ],
-    }),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`DeepSeek API error ${response.status}: ${err}`);
+    const errText = await response.text();
+    if (response.status === 402) {
+      throw new Error(`402 Insufficient Balance: ${errText}`);
+    }
+    throw new Error(`API error ${response.status}: ${errText}`);
   }
 
   const data = await response.json();
@@ -41,6 +51,34 @@ async function callDeepSeek(
     content: message.content || "",
     reasoningContent: message.reasoning_content || undefined,
   };
+}
+
+async function callDeepSeek(
+  system: string,
+  userContent: string,
+  maxTokens = 4096,
+): Promise<{ content: string; reasoningContent?: string }> {
+  const deepseekKey = process.env.DEEPSEEK_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
+
+  if (!deepseekKey && !groqKey) {
+    throw new Error("No API key configured (set DEEPSEEK_API_KEY or GROQ_API_KEY in .env.local)");
+  }
+
+  // Try DeepSeek first (R1 reasoning model)
+  if (deepseekKey) {
+    try {
+      return await callProvider(DEEPSEEK_BASE, deepseekKey, DEEPSEEK_MODEL, system, userContent, maxTokens, true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      const isBalanceError = msg.includes("402") || msg.includes("Insufficient Balance");
+      if (!isBalanceError || !groqKey) throw err;
+      console.warn("DeepSeek insufficient balance, falling back to Groq");
+    }
+  }
+
+  // Fallback to Groq
+  return await callProvider(GROQ_BASE, groqKey!, GROQ_MODEL, system, userContent, maxTokens, false);
 }
 
 async function ask(
