@@ -3,7 +3,7 @@ import { extractPdfText, parseVisura } from "@/lib/api/parser";
 import { processFullBando } from "@/lib/api/analyzer";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {

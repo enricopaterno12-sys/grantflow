@@ -1,21 +1,43 @@
-import Groq from "groq-sdk";
 import {
   DEEP_SCAN_TEMPLATE,
   PARAMETRI_FINANZIARI_TEMPLATE,
-  ANALYSIS_TEMPLATE,
   ELIGIBILITY_TEMPLATE,
   BUSINESS_PLAN_TEMPLATE,
 } from "./templates";
-import { splitIntoChunks, delay } from "./chunker";
 
-const MODEL_NAME = "llama-3.3-70b-versatile";
-const CHUNK_SIZE = 10000;
-const CHUNK_DELAY_MS = 20000;
+const MODEL_NAME = "deepseek-chat";
+const API_BASE = "https://api.deepseek.com";
 
-function getClient(): Groq {
-  const key = process.env.GROQ_API_KEY;
-  if (!key) throw new Error("GROQ_API_KEY environment variable is not set");
-  return new Groq({ apiKey: key });
+async function callDeepSeek(
+  system: string,
+  userContent: string,
+  maxTokens = 4096,
+  temperature = 0,
+): Promise<string> {
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) throw new Error("DEEPSEEK_API_KEY environment variable is not set");
+
+  const response = await fetch(`${API_BASE}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model: MODEL_NAME,
+      temperature,
+      max_tokens: maxTokens,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: userContent },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`DeepSeek API error ${response.status}: ${err}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || "";
 }
 
 async function ask(
@@ -24,40 +46,11 @@ async function ask(
   params: Record<string, string>,
   temperature = 0,
 ): Promise<string> {
-  const groq = getClient();
   const userContent = Object.entries(params).reduce(
     (acc, [key, val]) => acc.replace(`{${key}}`, val),
     userTemplate,
   );
-  const response = await groq.chat.completions.create({
-    model: MODEL_NAME,
-    temperature,
-    max_tokens: 4096,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: userContent },
-    ],
-  });
-  return response.choices[0]?.message?.content || "";
-}
-
-async function askRaw(
-  system: string,
-  userContent: string,
-  maxTokens = 1024,
-  temperature = 0,
-): Promise<string> {
-  const groq = getClient();
-  const response = await groq.chat.completions.create({
-    model: MODEL_NAME,
-    temperature,
-    max_tokens: maxTokens,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: userContent },
-    ],
-  });
-  return response.choices[0]?.message?.content || "";
+  return callDeepSeek(system, userContent, 4096, temperature);
 }
 
 function parseJsonStrict(raw: string): Record<string, unknown> {
@@ -96,97 +89,6 @@ export async function estraiParametriFinanziari(
     if (!(key in parametri)) parametri[key] = 0;
   }
   return parametri as Record<string, number>;
-}
-
-export async function analizzaBando(testoBando: string): Promise<string> {
-  return ask(
-    "Sei un analista bandi Invitalia e PNRR. Estrai parametri precisi, cita sempre l'articolo del bando.",
-    ANALYSIS_TEMPLATE,
-    { testo_bando: testoBando },
-  );
-}
-
-async function deepScanChunk(
-  chunkText: string,
-  idx: number,
-  total: number,
-): Promise<Record<string, unknown>> {
-  const prompt = `Sei un analista bandi. Esamina il frammento ${idx + 1}/${total} del bando e restituisci SOLO i dati presenti in questo frammento, in JSON valido senza testo aggiuntivo.
-
-{
-  "ateco_ammessi": [],
-  "ateco_esclusi": [],
-  "massimali_spesa": [],
-  "scadenze": [],
-  "regimi_aiuto": [],
-  "criteri_valutazione": [],
-  "spese_ammissibili": [],
-  "riferimenti": [],
-  "soggetti_ammissibili": [],
-  "requisiti_accesso": [],
-  "cumulo_dnsh": ""
-}
-
-FRAMMENTO:
-${chunkText}`;
-
-  const raw = await askRaw(
-    "Estrai dati strutturati dal frammento di bando. Sezioni non presenti → array/stringa vuota.",
-    prompt,
-    1024,
-    0,
-  );
-
-  try {
-    return parseJsonStrict(raw);
-  } catch {
-    return {};
-  }
-}
-
-function mergeDeepScan(results: Record<string, unknown>[]): Record<string, unknown> {
-  const merged: Record<string, unknown> = {};
-  const keys: string[] = [
-    "ateco_ammessi", "ateco_esclusi", "massimali_spesa", "scadenze",
-    "regimi_aiuto", "criteri_valutazione", "spese_ammissibili",
-    "riferimenti", "soggetti_ammissibili", "requisiti_accesso",
-  ];
-
-  for (const key of keys) {
-    const all = results.flatMap((r) => (r[key] as any[]) || []);
-    if (key === "ateco_ammessi" || key === "ateco_esclusi") {
-      merged[key] = [...new Set(all.map(String))];
-    } else if (key === "riferimenti") {
-      const seen = new Set<string>();
-      merged[key] = all.filter((item: any) => {
-        const id = item.articolo || JSON.stringify(item);
-        if (seen.has(id)) return false;
-        seen.add(id);
-        return true;
-      });
-    } else {
-      merged[key] = all;
-    }
-  }
-
-  const dnsh = results.map((r) => r.cumulo_dnsh as string).filter(Boolean);
-  merged.cumulo_dnsh = dnsh.sort((a, b) => b.length - a.length)[0] || "";
-
-  return merged;
-}
-
-function mergeParametri(results: Record<string, number>[]): Record<string, number> {
-  const keys = [
-    "aliquota_contributo", "aliquota_finanziamento",
-    "limite_min_investimento", "limite_max_investimento",
-    "fatturato_minimo", "bilanci_richiesti",
-  ];
-  const merged: Record<string, number> = {};
-  for (const key of keys) {
-    const vals = results.map((r) => Number(r[key] || 0)).filter((v) => v > 0);
-    merged[key] = vals.length > 0 ? Math.max(...vals) : 0;
-  }
-  return merged;
 }
 
 function generaRiepilogo(
@@ -273,46 +175,15 @@ export async function processFullBando(
   deep_scan: Record<string, unknown>;
   parametri_finanziari: Record<string, number>;
 }> {
-  const testoFast = testo.slice(0, 12000);
-  const chunks = splitIntoChunks(testo, CHUNK_SIZE);
-
-  if (chunks.length <= 1) {
-    const deepScan = await deepScanBando(testoFast).catch(() => ({}));
-    const parametri = await estraiParametriFinanziari(testoFast).catch(() => ({}));
-    return {
-      riepilogo: generaRiepilogo(deepScan, parametri as Record<string, number>),
-      deep_scan: deepScan,
-      parametri_finanziari: parametri as Record<string, number>,
-    };
-  }
-
-  const deepScanResults: Record<string, unknown>[] = [];
-  const parametriResults: Record<string, number>[] = [];
-
-  for (let i = 0; i < chunks.length; i++) {
-    const ds = await deepScanChunk(chunks[i], i, chunks.length);
-    deepScanResults.push(ds);
-
-    if (i === 0) {
-      const pm = await estraiParametriFinanziari(chunks[i]).catch(() => ({}));
-      parametriResults.push(pm as Record<string, number>);
-    }
-
-    if (i < chunks.length - 1) {
-      await delay(CHUNK_DELAY_MS);
-    }
-  }
-
-  const parametriExtra = await estraiParametriFinanziari(testo.slice(0, 20000)).catch(() => ({}));
-  parametriResults.push(parametriExtra as Record<string, number>);
-
-  const mergedDeep = mergeDeepScan(deepScanResults);
-  const mergedParam = mergeParametri(parametriResults);
-
+  const [deepScan, parametri] = await Promise.all([
+    deepScanBando(testo).catch(() => ({})),
+    estraiParametriFinanziari(testo).catch(() => ({})),
+  ]);
+  const p = parametri as Record<string, number>;
   return {
-    riepilogo: generaRiepilogo(mergedDeep, mergedParam),
-    deep_scan: mergedDeep,
-    parametri_finanziari: mergedParam,
+    riepilogo: generaRiepilogo(deepScan, p),
+    deep_scan: deepScan,
+    parametri_finanziari: p,
   };
 }
 

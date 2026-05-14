@@ -67,11 +67,9 @@ export async function POST(request: NextRequest) {
       `Aliquota finanziamento: ${calcolo.aliquota_finanziamento || 0}%`,
     ].join("\n");
 
-    const schedaTroncata = (scheda_bando || "").slice(0, 8000);
-
     try {
-      eligibility = await verificaEligibility(schedaTroncata, datiStr);
-      businessPlan = await generaBusinessPlan(schedaTroncata, datiStr, calcoloStr);
+      eligibility = await verificaEligibility(scheda_bando || "", datiStr);
+      businessPlan = await generaBusinessPlan(scheda_bando || "", datiStr, calcoloStr);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Errore chiamata LLM";
       return NextResponse.json({ detail: message }, { status: 502 });

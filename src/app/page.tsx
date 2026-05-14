@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import Sidebar from "@/components/Sidebar";
 import UploadBando from "@/components/UploadBando";
 import CompanyForm from "@/components/CompanyForm";
@@ -28,7 +28,6 @@ export default function Home() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const analyzePromiseRef = useRef<Promise<AnalyzeResponse> | null>(null);
 
   const resetAnalysis = useCallback(() => {
     setStep("upload");
@@ -49,20 +48,17 @@ export default function Home() {
     setBandoInfo({ nome: file.name, ente: "Analisi in corso..." });
     setStep("form");
 
-    analyzePromiseRef.current = analyzeBando(file)
-      .then((result) => {
-        setAnalyzeResult(result);
-        setBandoInfo({
-          nome: result.nome_bando || result.nome || file.name,
-          ente: result.ente_erogatore || result.ente || "Ente identificato",
-        });
-        if (result.visura_data) setVisuraPrefill(result.visura_data);
-        return result;
-      })
-      .catch((err) => {
-        setBandoInfo({ nome: file.name, ente: "Ente in fase di identificazione" });
-        throw err;
-      }) as Promise<AnalyzeResponse>;
+    try {
+      const result = await analyzeBando(file);
+      setAnalyzeResult(result);
+      setBandoInfo({
+        nome: result.nome_bando || result.nome || file.name,
+        ente: result.ente_erogatore || result.ente || "Ente identificato",
+      });
+      if (result.visura_data) setVisuraPrefill(result.visura_data);
+    } catch {
+      setBandoInfo({ nome: file.name, ente: "Ente in fase di identificazione" });
+    }
   }, []);
 
   const handleFormSubmit = useCallback(async (data: {
@@ -109,16 +105,8 @@ export default function Home() {
         if (enrichResult.visura_data) setVisuraPrefill(enrichResult.visura_data);
       }
 
-      let analyzeRes = analyzeResult;
-      if (!analyzeRes) {
-        try {
-          analyzeRes = analyzePromiseRef.current ? await analyzePromiseRef.current : await analyzeBando(bandoFile);
-        } catch {
-          analyzeRes = await analyzeBando(bandoFile);
-        }
-        if (!analyzeRes) throw new Error("Analisi bando fallita");
-        setAnalyzeResult(analyzeRes);
-      }
+      const analyzeRes = analyzeResult || await analyzeBando(bandoFile);
+      if (!analyzeResult) setAnalyzeResult(analyzeRes);
 
       const verifyRes = await verifyEligibility({
         dati_azienda: company,
