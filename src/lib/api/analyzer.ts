@@ -1,5 +1,5 @@
 import {
-  DEEP_SCAN_TEMPLATE,
+  VINCOLI_TEMPLATE,
   PARAMETRI_FINANZIARI_TEMPLATE,
   ELIGIBILITY_TEMPLATE,
   ANALISI_CONCISA_TEMPLATE,
@@ -59,8 +59,8 @@ function parseJsonStrict(raw: string): Record<string, unknown> {
 
 export async function deepScanBando(testoBando: string): Promise<Record<string, unknown>> {
   const risposta = await ask(
-    "Esegui un deep scan del bando. Estrai ogni dato strutturato con articoli di riferimento.",
-    DEEP_SCAN_TEMPLATE,
+    "Estrattore puro di regole. Estrai solo clausole oggettive, nessuna analisi.",
+    VINCOLI_TEMPLATE,
     { testo_bando: testoBando },
   );
   return parseJsonStrict(risposta);
@@ -94,20 +94,27 @@ function generaRiepilogo(
   parametri: Record<string, number>,
 ): string {
   const lines: string[] = ["### RIEPILOGO BANDO\n"];
+  const vs = (deepScan.vincoli_soggettivi as Record<string, unknown>) || {};
+  const vf = (deepScan.vincoli_finanziari as Record<string, unknown>) || {};
 
-  const soggetti = (deepScan.soggetti_ammissibili as string[]) || [];
-  if (soggetti.length > 0) {
-    lines.push("**Soggetti Ammissibili:** " + soggetti.join(", "));
-  }
-
-  const atecoAm = (deepScan.ateco_ammessi as string[]) || [];
+  const atecoAm = (vs.ateco_ammessi as string[]) || [];
   if (atecoAm.length > 0) {
     lines.push("**ATECO Ammessi:** " + atecoAm.join(", "));
   }
 
-  const atecoEs = (deepScan.ateco_esclusi as string[]) || [];
+  const atecoEs = (vs.ateco_esclusi as string[]) || [];
   if (atecoEs.length > 0) {
     lines.push("**ATECO Esclusi:** " + atecoEs.join(", "));
+  }
+
+  const dim = (vs.dimensione_ammessa as string[]) || [];
+  if (dim.length > 0) {
+    lines.push("**Soggetti Ammissibili:** " + dim.join(", "));
+  }
+
+  const prov = (vs.province_ammesse as string[]) || [];
+  if (prov.length > 0) {
+    lines.push("**Province Ammesse:** " + prov.join(", "));
   }
 
   lines.push("\n---\n### Parametri Economici\n");
@@ -118,49 +125,35 @@ function generaRiepilogo(
   if (parametri.fatturato_minimo) lines.push(`- Fatturato minimo: €${Number(parametri.fatturato_minimo).toLocaleString("it-IT")}`);
   if (parametri.bilanci_richiesti) lines.push(`- Bilanci richiesti: ${parametri.bilanci_richiesti}`);
 
-  const massimali = (deepScan.massimali_spesa as any[]) || [];
-  if (massimali.length > 0) {
-    lines.push("\n---\n### Massimali di Spesa\n");
-    for (const m of massimali) {
-      lines.push(`- ${m.regime || "N/D"}: €${Number(m.importo || 0).toLocaleString("it-IT")} (${m.periodo || ""}) ${m.articolo ? "— " + m.articolo : ""}`);
-    }
+  const invMin = vf.investimento_minimo as number;
+  const invMax = vf.investimento_massimo as number;
+  if (invMin || invMax) {
+    lines.push(`\n### Range Investimento\n`);
+    if (invMin) lines.push(`- Minimo: €${invMin.toLocaleString("it-IT")}`);
+    if (invMax) lines.push(`- Massimo: €${invMax.toLocaleString("it-IT")}`);
   }
 
-  const spese = (deepScan.spese_ammissibili as any[]) || [];
-  if (spese.length > 0) {
-    lines.push("\n---\n### Spese Ammissibili\n");
-    for (const s of spese) {
-      lines.push(`- ${s.categoria || "N/D"}: ${s.aliquota || 0}%${s.articolo ? " — " + s.articolo : ""}`);
-    }
+  const intensita = vf.intensita_contributo_percentuale as number;
+  if (intensita) {
+    lines.push(`- Intensità contributo: ${intensita}%`);
   }
 
-  const scadenze = (deepScan.scadenze as any[]) || [];
-  if (scadenze.length > 0) {
-    lines.push("\n---\n### Scadenze\n");
-    for (const s of scadenze) {
-      lines.push(`- Apertura: ${s.apertura || "N/D"} — Chiusura: ${s.chiusura || "N/D"} (${s.perentoria ? "Perentoria" : "Indicativa"})${s.articolo ? " — " + s.articolo : ""}`);
-    }
+  const massimale = vf.massimale_contributo as number;
+  if (massimale) {
+    lines.push(`- Massimale contributo: €${massimale.toLocaleString("it-IT")}`);
   }
 
-  const requisiti = (deepScan.requisiti_accesso as string[]) || [];
-  if (requisiti.length > 0) {
+  const regime = vf.regime_aiuto as string;
+  if (regime) {
+    lines.push(`- Regime aiuto: ${regime}`);
+  }
+
+  const fattMin = vf.fatturato_minimo as number;
+  const bilReq = vf.bilanci_richiesti as number;
+  if (fattMin || bilReq) {
     lines.push("\n---\n### Requisiti di Accesso\n");
-    for (const r of requisiti) {
-      lines.push(`- ${r}`);
-    }
-  }
-
-  const criteri = (deepScan.criteri_valutazione as any[]) || [];
-  if (criteri.length > 0) {
-    lines.push("\n---\n### Criteri di Valutazione\n");
-    for (const c of criteri) {
-      lines.push(`- ${c.criterio || "N/D"}: ${c.punteggio_massimo || 0} pt (${c.peso || 0}%)${c.articolo ? " — " + c.articolo : ""}`);
-    }
-  }
-
-  if (deepScan.cumulo_dnsh) {
-    lines.push("\n---\n### Cumulo e DNSH\n");
-    lines.push(String(deepScan.cumulo_dnsh));
+    if (fattMin) lines.push(`- Fatturato minimo: €${fattMin.toLocaleString("it-IT")}`);
+    if (bilReq) lines.push(`- Bilanci richiesti: ${bilReq}`);
   }
 
   return lines.join("\n");

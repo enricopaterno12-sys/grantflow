@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import StatusBadge from "./StatusBadge";
-import type { VerifyResponse, CompanyData, DeepScanResult, AnalisiTecnicaItem, ChecklistPraticaItem } from "@/types";
+import type { VerifyResponse, CompanyData, DeepScanResult, AnalisiTecnicaItem, ChecklistPraticaItem, FattoreEsito } from "@/types";
 
 type ResultTab = "overview" | "analysis" | "custom" | "data" | "checklist";
 
@@ -34,15 +34,19 @@ function RatingBadge({ rating, size = "lg" }: { rating: string; size?: "sm" | "l
 }
 
 export default function ResultsView({ response, azienda, deepScan }: Props) {
-  const { calcolo_finanziario: calcolo, analisi_concisa: analisi, business_plan_data: bpData, custom_prompt } = response;
+  const { calcolo_finanziario: calcolo, analisi_concisa: analisi, business_plan_data: bpData, custom_prompt, esito_calcolato: esitoCalc } = response;
 
   const esito = analisi?.esito;
-  const rating = esito?.rating || "N/D";
-  const probabilita = esito?.probabilita;
+  const rating = esitoCalc?.rating || esito?.rating || "N/D";
+  const probabilita = esitoCalc?.probabilita ?? esito?.probabilita ?? null;
+  const scudo = esitoCalc?.scudo_anti_errore || esito?.scudo_anti_errore || "";
+  const dettagli: FattoreEsito[] = esitoCalc?.dettagli || [];
+  const contributoMassimo = esitoCalc?.contributo_massimo_concedibile ?? esito?.contributo_massimo_concedibile ?? calcolo?.contributo ?? 0;
+  const intensitaAiuto = esitoCalc?.intensita_aiuto ?? esito?.intensita_aiuto ?? calcolo?.aliquota_contributo ?? 0;
+  const regimeAiuti = esitoCalc?.regime_aiuti || esito?.regime_aiuti || "N/D";
   const analisiTecnica: AnalisiTecnicaItem[] = (analisi?.analisi_tecnica || []) as AnalisiTecnicaItem[];
   const analisiCustom = analisi?.analisi_custom;
   const rawChecklist = (analisi?.checklist_pratica || []) as ChecklistPraticaItem[];
-  const scudo = esito?.scudo_anti_errore || "";
 
   const [tab, setTab] = useState<ResultTab>("overview");
   const [checklist, setChecklist] = useState<ChecklistPraticaItem[]>(() =>
@@ -127,15 +131,15 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
                 <tbody>
                   <tr className="border-t border-white/[0.04]">
                     <td className="px-4 py-2.5 text-gray-300">Contributo Massimo Concedibile</td>
-                    <td className="px-4 py-2.5 text-right text-white font-medium">€{(esito?.contributo_massimo_concedibile ?? calcolo?.contributo ?? 0).toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right text-white font-medium">€{(contributoMassimo).toLocaleString()}</td>
                   </tr>
                   <tr className="border-t border-white/[0.04] bg-white/[0.01]">
                     <td className="px-4 py-2.5 text-gray-300">Intensità d'aiuto</td>
-                    <td className="px-4 py-2.5 text-right text-emerald-400 font-medium">{esito?.intensita_aiuto ?? calcolo?.aliquota_contributo ?? 0}%</td>
+                    <td className="px-4 py-2.5 text-right text-emerald-400 font-medium">{intensitaAiuto}%</td>
                   </tr>
                   <tr className="border-t border-white/[0.04]">
                     <td className="px-4 py-2.5 text-gray-300">Regime di aiuti</td>
-                    <td className="px-4 py-2.5 text-right text-white font-medium">{esito?.regime_aiuti || "N/D"}</td>
+                    <td className="px-4 py-2.5 text-right text-white font-medium">{regimeAiuti}</td>
                   </tr>
                   <tr className="border-t border-white/[0.04] bg-white/[0.01]">
                     <td className="px-4 py-2.5 text-gray-300">Investimento</td>
@@ -149,6 +153,35 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
               </table>
             </div>
           </div>
+
+          {/* Dettagli Fattori (da algoritmo deterministico) */}
+          {dettagli.length > 0 && (
+            <div className="glass rounded-2xl p-5">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Dettagli Fattori — Algoritmo Deterministico</h3>
+              <div className="space-y-2">
+                {dettagli.map((f, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.02]">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
+                      f.esito === "OK" ? "bg-emerald-500/20 text-emerald-400" :
+                      f.esito === "KO" ? "bg-red-500/20 text-red-400" :
+                      "bg-yellow-500/20 text-yellow-400"
+                    }`}>
+                      {f.esito === "OK" ? "✓" : f.esito === "KO" ? "✗" : "?"}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-white">{f.fattore}</span>
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                          f.tipo === "non_variabile" ? "bg-purple-900/30 text-purple-400" : "bg-blue-900/30 text-blue-400"
+                        }`}>{f.tipo === "non_variabile" ? "Bloccante" : "Variabile"}</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">{f.dettaglio}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Scudo Anti-Errore */}
           {scudo && (
@@ -235,33 +268,60 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
       {tab === "data" && (
         <div className="animate-fade-in space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Dati Core Bando */}
+            {/* Dati Core Bando — Vincoli */}
             <div className="glass rounded-2xl p-5">
-              <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-[0.1em] mb-4">Dati Core Bando</h3>
+              <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-[0.1em] mb-4">Vincoli Bando</h3>
               <div className="space-y-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-purple-400 mt-1">Soggettivi</p>
                 <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
-                  <span className="text-sm text-gray-500">Ente</span>
-                  <span className="text-sm text-white font-medium">—</span>
+                  <span className="text-sm text-gray-500">Province ammesse</span>
+                  <span className="text-sm text-white font-medium text-right max-w-[180px]">{deepScan?.vincoli_soggettivi?.province_ammesse?.join(", ") || "—"}</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
-                  <span className="text-sm text-gray-500">Scadenza</span>
-                  <span className="text-sm text-white font-medium">{deepScan?.scadenze?.[0]?.chiusura || "—"}</span>
+                  <span className="text-sm text-gray-500">ATECO ammessi</span>
+                  <span className="text-sm text-white font-medium text-right max-w-[180px]">{deepScan?.vincoli_soggettivi?.ateco_ammessi?.join(", ") || "—"}</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
-                  <span className="text-sm text-gray-500">Budget / Massimale</span>
-                  <span className="text-sm text-white font-medium">
-                    {deepScan?.massimali_spesa?.[0] ? `€${deepScan.massimali_spesa[0].importo.toLocaleString()}` : "—"}
-                  </span>
+                  <span className="text-sm text-gray-500">ATECO esclusi</span>
+                  <span className="text-sm text-white font-medium text-right max-w-[180px]">{deepScan?.vincoli_soggettivi?.ateco_esclusi?.join(", ") || "—"}</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
-                  <span className="text-sm text-gray-500">Investimento Min</span>
-                  <span className="text-sm text-white font-medium">
-                    {deepScan?.spese_ammissibili?.[0]?.aliquota != null ? `${deepScan.spese_ammissibili[0].aliquota}%` : "—"}
-                  </span>
+                  <span className="text-sm text-gray-500">Dimensione ammessa</span>
+                  <span className="text-sm text-white font-medium text-right max-w-[180px]">{deepScan?.vincoli_soggettivi?.dimensione_ammessa?.join(", ") || "—"}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Sede requisiti</span>
+                  <span className="text-sm text-white font-medium text-right max-w-[180px]">{deepScan?.vincoli_soggettivi?.sede_requisiti || "—"}</span>
+                </div>
+
+                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-blue-400 mt-3">Finanziari</p>
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Investimento minimo</span>
+                  <span className="text-sm text-white font-medium">{deepScan?.vincoli_finanziari?.investimento_minimo ? `€${deepScan.vincoli_finanziari.investimento_minimo.toLocaleString()}` : "—"}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Investimento massimo</span>
+                  <span className="text-sm text-white font-medium">{deepScan?.vincoli_finanziari?.investimento_massimo ? `€${deepScan.vincoli_finanziari.investimento_massimo.toLocaleString()}` : "—"}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Intensità contributo</span>
+                  <span className="text-sm text-white font-medium">{deepScan?.vincoli_finanziari?.intensita_contributo_percentuale != null ? `${deepScan.vincoli_finanziari.intensita_contributo_percentuale}%` : "—"}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Massimale contributo</span>
+                  <span className="text-sm text-white font-medium">{deepScan?.vincoli_finanziari?.massimale_contributo ? `€${deepScan.vincoli_finanziari.massimale_contributo.toLocaleString()}` : "—"}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Fatturato minimo</span>
+                  <span className="text-sm text-white font-medium">{deepScan?.vincoli_finanziari?.fatturato_minimo ? `€${deepScan.vincoli_finanziari.fatturato_minimo.toLocaleString()}` : "—"}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Bilanci richiesti</span>
+                  <span className="text-sm text-white font-medium">{deepScan?.vincoli_finanziari?.bilanci_richiesti != null ? `${deepScan.vincoli_finanziari.bilanci_richiesti}` : "—"}</span>
                 </div>
                 <div className="flex justify-between py-1.5">
-                  <span className="text-sm text-gray-500">Requisiti Accesso</span>
-                  <span className="text-sm text-white font-medium text-right max-w-[200px]">{deepScan?.requisiti_accesso?.slice(0, 2).join(", ") || "—"}</span>
+                  <span className="text-sm text-gray-500">Regime aiuto</span>
+                  <span className="text-sm text-white font-medium text-right max-w-[180px]">{deepScan?.vincoli_finanziari?.regime_aiuto || "—"}</span>
                 </div>
               </div>
             </div>

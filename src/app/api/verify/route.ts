@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analisiConcisa } from "@/lib/api/analyzer";
 import { CalcolatoreFinanziario, calcolaBusinessPlan, calcolaIndipendenzaFinanziaria } from "@/lib/api/calculator";
-import type { DeepScanResult, BusinessPlanResult, ChecklistItem, ChecklistPraticaItem } from "@/types";
+import { calcolaEsitoDeterministico, calcoloSenzaVincoli } from "@/lib/api/eligibility-rules";
+import type { DeepScanResult, BusinessPlanResult, ChecklistPraticaItem } from "@/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -16,31 +17,6 @@ export async function POST(request: NextRequest) {
     }
 
     const d = dati_azienda;
-    const datiStr = [
-      `Azienda: ${d.ragione_sociale || ""}`,
-      `ATECO: ${d.ateco || ""}`,
-      `Dimensione: ${d.dimensione || ""}`,
-      `Regione: ${d.regione || ""}`,
-      `Fatturato: €${(d.fatturato || 0).toLocaleString("it-IT")}`,
-      `Dipendenti: ${d.dipendenti || 0}`,
-      `Data Costituzione: ${d.data_costituzione || ""}`,
-      `Investimento: €${(d.investimento || 0).toLocaleString("it-IT")}`,
-      `Finanziamento Richiesto: €${(d.finanziamento_richiesto || 0).toLocaleString("it-IT")}`,
-      `Forma Giuridica: ${d.forma_giuridica || ""}`,
-      `Partita IVA: ${d.partita_iva || ""}`,
-      `Codice Fiscale: ${d.codice_fiscale || ""}`,
-      `Sede Legale: ${d.sede_legale || ""}`,
-      `PEC: ${d.pec || ""}`,
-      `Utile Netto: €${(d.utile_netto || 0).toLocaleString("it-IT")}`,
-      `Debiti Finanziari: €${(d.debiti_finanziari || 0).toLocaleString("it-IT")}`,
-      `Patrimonio Netto: €${(d.patrimonio_netto || 0).toLocaleString("it-IT")}`,
-      `De Minimis Importo: €${(d.de_minimis_importo || 0).toLocaleString("it-IT")}`,
-      `De Minimis Regime: ${d.de_minimis_regime || ""}`,
-      `Descrizione Progetto: ${d.descrizione_progetto || ""}`,
-      `Categoria Spesa: ${d.categoria_spesa || ""}`,
-      `Procedure Concorsuali: ${d.procedure_concorsuali ? "Sì" : "No"}`,
-    ].join("\n");
-
     const calcolatore = new CalcolatoreFinanziario(parametri_finanziari || {});
     const calcolo = calcolatore.calcola(d.investimento || 0);
 
@@ -55,24 +31,47 @@ export async function POST(request: NextRequest) {
     const valBil = calcolatore.valida_bilanci(d.data_costituzione || "", Math.max(0, anniBil));
     const valFat = calcolatore.valida_fatturato(d.fatturato || 0);
 
-    // Nuova analisi concisa via Groq
-    let analisiConcisaResult: Record<string, unknown> = {};
+    // ═══════════════════════════════════════════
+    // FASE 1: Calcolo Esito Deterministico
+    // ═══════════════════════════════════════════
+    const hasVincoli = deep_scan?.vincoli_soggettivi || deep_scan?.vincoli_finanziari;
+    const esitoCalcolato = hasVincoli
+      ? calcolaEsitoDeterministico(d, deep_scan || {}, parametri_finanziari || {}, calcolo)
+      : calcoloSenzaVincoli(d, parametri_finanziari || {}, calcolo);
+
+    const { rating, probabilita, dettagli, scudo_anti_errore, contributo_massimo_concedibile, intensita_aiuto, regime_aiuti } = esitoCalcolato;
+
+    // ═══════════════════════════════════════════
+    // FASE 2: Analisi Custom (solo se richiesta)
+    // ═══════════════════════════════════════════
+    let analisiConcisaResult: Record<string, unknown> | undefined;
     let analisiCustomText: string | undefined;
-    try {
-      const result = await analisiConcisa(scheda_bando || "", datiStr, custom_prompt);
-      analisiConcisaResult = result.result;
-      analisiCustomText = result.analisiCustom;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Errore chiamata Groq";
-      return NextResponse.json({ detail: message }, { status: 502 });
+    if (custom_prompt) {
+      try {
+        const datiStr = [
+          `Azienda: ${d.ragione_sociale || ""}`,
+          `ATECO: ${d.ateco || ""}`,
+          `Dimensione: ${d.dimensione || ""}`,
+          `Regione: ${d.regione || ""}`,
+          `Fatturato: €${(d.fatturato || 0).toLocaleString("it-IT")}`,
+          `Dipendenti: ${d.dipendenti || 0}`,
+          `Data Costituzione: ${d.data_costituzione || ""}`,
+          `Investimento: €${(d.investimento || 0).toLocaleString("it-IT")}`,
+          `De Minimis Importo: €${(d.de_minimis_importo || 0).toLocaleString("it-IT")}`,
+          `Descrizione Progetto: ${d.descrizione_progetto || ""}`,
+          `Categoria Spesa: ${d.categoria_spesa || ""}`,
+        ].join("\n");
+        const result = await analisiConcisa(scheda_bando || "", datiStr, custom_prompt);
+        analisiConcisaResult = result.result;
+        analisiCustomText = result.analisiCustom;
+      } catch {
+        // Silently fail — custom analysis is optional
+      }
     }
 
-    // Backward-compatible eligibility summary
-    const esito = analisiConcisaResult.esito as Record<string, unknown> || {};
-    const rating = (esito.rating as string) || "N/D";
-    const prob = (esito.probabilita as number) || 0;
-
-    // Business plan data with fallback defaults
+    // ═══════════════════════════════════════════
+    // FASE 3: Business Plan Data (deterministico)
+    // ═══════════════════════════════════════════
     const investEff = calcolo.investimento_effettivo || d.investimento || 0;
     let bpData: BusinessPlanResult;
     if (investEff > 0) {
@@ -85,16 +84,17 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    // Financial independence
     const indipendenzaFinanziaria = calcolaIndipendenzaFinanziaria(
       d.patrimonio_netto || 0,
       d.debiti_finanziari || 0,
     );
 
-    // Build checklist pratica from Groq output + fallback items
-    const groqChecklist = (analisiConcisaResult.checklist_pratica as Array<{ nome: string; obbligatorio: boolean }>) || [];
+    // ═══════════════════════════════════════════
+    // FASE 4: Checklist
+    // ═══════════════════════════════════════════
+    const groqChecklist = (analisiConcisaResult?.checklist_pratica as Array<{ nome: string; obbligatorio: boolean }>) || [];
     const checklistPratica: ChecklistPraticaItem[] = groqChecklist.length > 0
-      ? groqChecklist.map((c: { nome: string; obbligatorio: boolean }) => ({ nome: c.nome, obbligatorio: c.obbligatorio ?? true, completato: false }))
+      ? groqChecklist.map((c) => ({ nome: c.nome, obbligatorio: c.obbligatorio ?? true, completato: false }))
       : [
           { nome: "DURC (Documento Unico di Regolarità Contributiva)", obbligatorio: true, completato: false },
           { nome: "Certificazione Antimafia", obbligatorio: true, completato: false },
@@ -103,32 +103,23 @@ export async function POST(request: NextRequest) {
           { nome: "Atto costitutivo e statuto", obbligatorio: true, completato: false },
         ];
 
-    // Build Dati Chiave Concessione table data
-    const contributoMassimo = (esito.contributo_massimo_concedibile as number) || calcolo.contributo || 0;
-    const intensitaAiuto = (esito.intensita_aiuto as number) || calcolo.aliquota_contributo || 0;
-    const regimeAiuti = (esito.regime_aiuti as string) || "N/D";
-    const scudo = (esito.scudo_anti_errore as string) || "";
-
     return NextResponse.json({
-      // Legacy fields for backward compat
+      // Legacy fields
       calcolo_finanziario: calcolo,
       valutazione_bilanci: valBil,
       valutazione_fatturato: valFat,
       indipendenza_finanziaria: indipendenzaFinanziaria,
       business_plan_data: bpData,
-      eligibility: `CLASSIFICAZIONE FINALE: [${rating}]\nPROBABILITÀ APPROVAZIONE: ${prob}%`,
-      eligibility_checks: {
-        overall: rating === "GRIGIO" ? "N/D" : rating,
-        probabilita: prob,
-        checks: [],
-        motivazioni: scudo,
-      },
-      eligibility_parsed: { classificazione: rating, probabilita: prob },
+      eligibility: `CLASSIFICAZIONE FINALE: [${rating}]\nPROBABILITÀ APPROVAZIONE: ${probabilita}%`,
+      eligibility_checks: { overall: rating === "GRIGIO" ? "N/D" : rating, probabilita, checks: dettagli.map((f) => ({ nome: f.fattore, status: f.esito === "OK" ? "PASS" : f.esito === "KO" ? "FAIL" : "WARN" as const, dettaglio: f.dettaglio })), motivazioni: scudo_anti_errore },
+      eligibility_parsed: { classificazione: rating, probabilita },
       business_plan: "",
       checklist: checklistPratica,
-      // Nuova struttura concisa
-      analisi_concisa: analisiConcisaResult,
+      // Nuova struttura
+      analisi_concisa: analisiConcisaResult || { esito: { rating, probabilita, contributo_massimo_concedibile, intensita_aiuto, regime_aiuti, scudo_anti_errore }, analisi_tecnica: [], analisi_custom: analisiCustomText || "", checklist_pratica: checklistPratica },
       custom_prompt: custom_prompt || null,
+      // Dettaglio esito calcolato
+      esito_calcolato: esitoCalcolato,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore sconosciuto";

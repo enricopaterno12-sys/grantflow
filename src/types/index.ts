@@ -91,6 +91,9 @@ export interface DeepScanResult {
   soggetti_ammissibili: string[];
   requisiti_accesso: string[];
   cumulo_dnsh: string;
+  // Nuova struttura vincoli (da VINCOLI_TEMPLATE)
+  vincoli_soggettivi?: VincoliSoggettivi;
+  vincoli_finanziari?: VincoliFinanziari;
 }
 
 // ── Eligibility ───────────────────────────────
@@ -149,6 +152,51 @@ export interface VerifyEligibilityRagionata {
   calcolo_preciso: CalcoloPreciso;
   verifiche: VerificaSingola[];
   de_minimis_check: DeMinimisCheck;
+}
+
+// ── Vincoli Bando (estrazione pura regole) ────
+export interface VincoliSoggettivi {
+  province_ammesse?: string[];
+  ateco_esclusi?: string[];
+  ateco_ammessi?: string[];
+  dimensione_ammessa?: string[];
+  sede_requisiti?: string;
+  settori_esclusi?: string[];
+}
+
+export interface VincoliFinanziari {
+  investimento_minimo?: number;
+  investimento_massimo?: number;
+  intensita_contributo_percentuale?: number;
+  intensita_finanziamento_percentuale?: number;
+  massimale_contributo?: number;
+  massimale_finanziamento?: number;
+  fatturato_minimo?: number;
+  bilanci_richiesti?: number;
+  regime_aiuto?: string;
+}
+
+export interface VincoliBando {
+  vincoli_soggettivi: VincoliSoggettivi;
+  vincoli_finanziari: VincoliFinanziari;
+}
+
+// ── Esito Calcolato (algoritmo deterministico) ─
+export interface FattoreEsito {
+  fattore: string;
+  tipo: "non_variabile" | "variabile";
+  esito: "OK" | "KO" | "DUBBIO";
+  dettaglio: string;
+}
+
+export interface EsitoCalcolato {
+  rating: "VERDE" | "GIALLO" | "ROSSO" | "GRIGIO";
+  probabilita: number;
+  dettagli: FattoreEsito[];
+  scudo_anti_errore: string;
+  contributo_massimo_concedibile: number;
+  intensita_aiuto: number;
+  regime_aiuti: string;
 }
 
 // ── Nuova Analisi Concisa (Groq) ──────────────
@@ -257,6 +305,8 @@ export interface VerifyResponse {
   // Nuova analisi concisa (Groq)
   analisi_concisa?: AnalisiConcisa;
   custom_prompt?: string;
+  // Esito calcolato deterministico (3-fasi)
+  esito_calcolato?: EsitoCalcolato;
 }
 
 // ── Legacy (kept for backward compat) ─────────

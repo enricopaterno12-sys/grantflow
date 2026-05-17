@@ -1,41 +1,43 @@
-export const DEEP_SCAN_TEMPLATE = `
-Sei un analista bandi senior specializzato in Finanza Agevolata. Effettua una scansione approfondita (Deep Scan) del bando.
-
-ESTRAI OGNI DATO CON L'ARTICOLO DEL BANDO DI RIFERIMENTO.
+export const VINCOLI_TEMPLATE = `
+Sei un analista bandi senior. Sei un estrattore puro di regole.
+Leggi il bando ed estrai SOLO le clausole oggettive. Non fare analisi, non dare giudizi.
 
 TESTO BANDO:
 {testo_bando}
 
 Restituisci ESCLUSIVAMENTE un oggetto JSON valido, senza testo aggiuntivo, senza markdown.
 
-Struttura JSON richiesta:
+Formato:
 {
-  "ateco_ammessi": ["codice1", "codice2"],
-  "ateco_esclusi": ["codice3"],
-  "massimali_spesa": [
-    { "regime": "De Minimis|GBER|Altro", "importo": 0, "periodo": "triennio", "articolo": "Art. X" }
-  ],
-  "scadenze": [
-    { "apertura": "GG/MM/AAAA", "chiusura": "GG/MM/AAAA", "perentoria": true, "articolo": "Art. X" }
-  ],
-  "regimi_aiuto": [
-    { "tipo": "descrizione", "regolamento": "Reg. UE n. ...", "intensita_massima": 50, "articolo": "Art. X" }
-  ],
-  "criteri_valutazione": [
-    { "criterio": "descrizione", "punteggio_massimo": 30, "peso": 25, "articolo": "Art. X" }
-  ],
-  "spese_ammissibili": [
-    { "categoria": "Software", "dettaglio": "descrizione", "aliquota": 50, "articolo": "Art. X" }
-  ],
-  "riferimenti": [
-    { "articolo": "Art. X", "contenuto": "testo integrale o sintesi" }
-  ],
-  "soggetti_ammissibili": ["Micro", "Piccola", "Media", "Grande"],
-  "requisiti_accesso": ["descrizione requisito"],
-  "cumulo_dnsh": "descrizione delle regole di cumulo e DNSH"
+  "vincoli_soggettivi": {
+    "province_ammesse": ["Ferrara", "Ravenna"],
+    "ateco_esclusi": ["01", "02", "A"],
+    "ateco_ammessi": ["62", "63"],
+    "dimensione_ammessa": ["Micro", "Piccola", "Media"],
+    "sede_requisiti": "Sede operativa nelle province indicate",
+    "settori_esclusi": []
+  },
+  "vincoli_finanziari": {
+    "investimento_minimo": 30000,
+    "investimento_massimo": 200000,
+    "intensita_contributo_percentuale": 50,
+    "intensita_finanziamento_percentuale": 0,
+    "massimale_contributo": 5000,
+    "massimale_finanziamento": 0,
+    "fatturato_minimo": 100000,
+    "bilanci_richiesti": 2,
+    "regime_aiuto": "De Minimis - Reg. UE 1407/2013"
+  }
 }
 
-IMPORTANTE: Per ogni dato inserisci SEMPRE l'articolo del bando di riferimento. Se non trovi l'articolo specifico usa "Bando".
+REGOLE:
+1. Se un dato non è specificato nel bando USA NULL, non inventare.
+2. province_ammesse: lista province dove deve avere sede l'azienda. Se non specificato usa [].
+3. ateco_ammessi: SOLO quelli esplicitamente citati come ammessi.
+4. ateco_esclusi: SOLO quelli esplicitamente citati come esclusi.
+5. intensita_contributo_percentuale: SCRIVI 50 per 50%, NON 0.5.
+6. massimale_contributo: importo massimo erogabile in euro. Se non specificato usa null.
+7. regime_aiuto: nome del regime. Se non specificato usa null.
 `;
 
 export const PARAMETRI_FINANZIARI_TEMPLATE = `
