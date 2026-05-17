@@ -2,7 +2,7 @@ import {
   DEEP_SCAN_TEMPLATE,
   PARAMETRI_FINANZIARI_TEMPLATE,
   ELIGIBILITY_TEMPLATE,
-  ELIGIBILITY_TEMPLATE_R1,
+  ANALISI_CONCISA_TEMPLATE,
   BUSINESS_PLAN_TEMPLATE,
 } from "./templates";
 
@@ -196,22 +196,31 @@ export async function verificaEligibility(
   );
 }
 
-export async function verificaEligibilityRagionata(
+export async function analisiConcisa(
   scheda: string,
   dati: string,
-): Promise<{ result: Record<string, unknown>; technicalNotes: string }> {
-  const userContent = ELIGIBILITY_TEMPLATE_R1
+  customPrompt?: string,
+): Promise<{ result: Record<string, unknown>; analisiCustom?: string }> {
+  const promptCustomSection = customPrompt
+    ? `\nRICHIESTA CUSTOM DEL CLIENTE:\n${customPrompt}\n\nRispondi nel campo analisi_custom.`
+    : "";
+
+  const userContent = ANALISI_CONCISA_TEMPLATE
     .replace("{dati}", dati)
-    .replace("{scheda}", scheda);
+    .replace("{scheda}", scheda)
+    .replace("{prompt_custom_section}", promptCustomSection);
 
   const content = await callGroq(
-    "Sei un analista bandi senior. Produci SOLO JSON valido, senza markdown né testo extra.",
+    "Sei un analista bandi senior. Produci SOLO JSON valido, senza markdown.",
     userContent,
     8192,
   );
 
   const parsed = parseJsonStrict(content);
-  return { result: parsed, technicalNotes: "" };
+  return {
+    result: parsed,
+    analisiCustom: (parsed as Record<string, unknown>).analisi_custom as string | undefined,
+  };
 }
 
 export async function generaBusinessPlan(

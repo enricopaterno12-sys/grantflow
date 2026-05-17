@@ -28,6 +28,7 @@ export async function verifyEligibility(data: {
   parametri_finanziari: ParametriFinanziari;
   scheda_bando: string;
   deep_scan: Record<string, unknown>;
+  custom_prompt?: string;
 }) {
   if (FASTAPI_URL) {
     const res = await api.post("/process", {

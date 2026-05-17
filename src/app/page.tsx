@@ -71,6 +71,7 @@ export default function Home() {
     de_minimis_importo: number; de_minimis_regime: string;
     descrizione_progetto: string; categoria_spesa: string;
     procedure_concorsuali: boolean;
+    custom_prompt?: string;
   }) => {
     if (!bandoFile) return;
     setLoading(true);
@@ -113,6 +114,7 @@ export default function Home() {
         parametri_finanziari: analyzeRes.parametri_finanziari,
         scheda_bando: analyzeRes.riepilogo || analyzeRes.scheda || analyzeRes.testo_estratto || "",
         deep_scan: (analyzeRes.deep_scan || {}) as any,
+        custom_prompt: data.custom_prompt,
       });
 
       setVerifyResult(verifyRes);

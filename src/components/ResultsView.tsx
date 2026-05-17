@@ -1,18 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { useState, useEffect } from "react";
 import StatusBadge from "./StatusBadge";
-import DocumentChecklist from "./DocumentChecklist";
-import { parseValutazioneTecnica } from "@/lib/valutazioneTecnicaParser";
-import type {
-  VerifyResponse, CompanyData, DeepScanResult,
-  EligibilityResult, BusinessPlanResult, ChecklistItem,
-  VerifyEligibilityRagionata,
-} from "@/types";
+import type { VerifyResponse, CompanyData, DeepScanResult, AnalisiTecnicaItem, ChecklistPraticaItem } from "@/types";
 
-type ResultTab = "overview" | "requirements" | "financial" | "documents";
+type ResultTab = "overview" | "analysis" | "custom" | "data" | "checklist";
 
 interface Props {
   response: VerifyResponse;
@@ -20,123 +12,85 @@ interface Props {
   deepScan?: DeepScanResult;
 }
 
-function StatCard({ label, value, valueClass = "text-white" }: { label: string; value: React.ReactNode; valueClass?: string }) {
+function RatingBadge({ rating, size = "lg" }: { rating: string; size?: "sm" | "lg" }) {
+  const colors: Record<string, string> = {
+    VERDE: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
+    GIALLO: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25",
+    ROSSO: "bg-red-500/15 text-red-400 border-red-500/25",
+    GRIGIO: "bg-gray-500/15 text-gray-400 border-gray-500/25",
+  };
+  const labels: Record<string, string> = {
+    VERDE: "Ammissibile",
+    GIALLO: "Ammissibile con riserva",
+    ROSSO: "Non ammissibile",
+    GRIGIO: "Dati insufficienti",
+  };
   return (
-    <div className="glass rounded-xl px-4 py-3.5">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-500">{label}</p>
-      <p className={`text-lg font-bold mt-0.5 ${valueClass}`}>{value}</p>
-    </div>
-  );
-}
-
-function MiniCard({ label, value, semaforo, messaggio }: { label: string; value: React.ReactNode; semaforo?: "VERDE" | "GIALLO" | "ROSSO" | "GRIGIO"; messaggio?: string }) {
-  const borderMap = { VERDE: "border-emerald-500/20", GIALLO: "border-yellow-500/20", ROSSO: "border-red-500/20", GRIGIO: "border-gray-500/20" };
-  const dotMap = { VERDE: "bg-emerald-500", GIALLO: "bg-yellow-500", ROSSO: "bg-red-500", GRIGIO: "bg-gray-500" };
-  const border = semaforo ? borderMap[semaforo] : "border-white/[0.04]";
-  return (
-    <div className={`glass rounded-xl px-3 py-2.5 border ${border}`}>
-      <div className="flex items-center gap-1.5">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-500">{label}</p>
-        {semaforo && <span className={`w-1.5 h-1.5 rounded-full ${dotMap[semaforo]}`} />}
-      </div>
-      <p className="text-sm font-bold mt-0.5 text-white">{value}</p>
-      {messaggio && <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">{messaggio}</p>}
+    <div className={`inline-flex items-center gap-2.5 font-semibold rounded-xl border ${colors[rating] || colors.GRIGIO} ${size === "lg" ? "px-5 py-3 text-lg" : "px-3 py-1.5 text-sm"}`}>
+      <span className={`w-2.5 h-2.5 rounded-full ${rating === "VERDE" ? "bg-emerald-500" : rating === "GIALLO" ? "bg-yellow-500" : rating === "ROSSO" ? "bg-red-500" : "bg-gray-500"}`} />
+      {labels[rating] || rating}
     </div>
   );
 }
 
 export default function ResultsView({ response, azienda, deepScan }: Props) {
-  const {
-    calcolo_finanziario: calcolo,
-    valutazione_bilanci: valBil,
-    valutazione_fatturato: valFat,
-    indipendenza_finanziaria: indFin,
-    eligibility,
-    eligibility_checks: eligibilityChecks,
-    eligibility_strutturata: eligStrutt,
-    technical_notes: technicalNotes,
-    business_plan: businessPlan,
-    business_plan_data: bpData,
-    checklist,
-  } = response;
+  const { calcolo_finanziario: calcolo, analisi_concisa: analisi, business_plan_data: bpData, custom_prompt } = response;
+
+  const esito = analisi?.esito;
+  const rating = esito?.rating || "N/D";
+  const probabilita = esito?.probabilita;
+  const analisiTecnica: AnalisiTecnicaItem[] = (analisi?.analisi_tecnica || []) as AnalisiTecnicaItem[];
+  const analisiCustom = analisi?.analisi_custom;
+  const rawChecklist = (analisi?.checklist_pratica || []) as ChecklistPraticaItem[];
+  const scudo = esito?.scudo_anti_errore || "";
 
   const [tab, setTab] = useState<ResultTab>("overview");
-  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>(checklist || []);
-  const [exporting, setExporting] = useState<string | null>(null);
-  const [showTechnicalNotes, setShowTechnicalNotes] = useState(false);
+  const [checklist, setChecklist] = useState<ChecklistPraticaItem[]>(() =>
+    rawChecklist.length > 0
+      ? rawChecklist.map((c) => ({ ...c, completato: false }))
+      : [
+          { nome: "DURC (Documento Unico di Regolarità Contributiva)", obbligatorio: true, completato: false },
+          { nome: "Certificazione Antimafia", obbligatorio: true, completato: false },
+          { nome: "Preventivi di spesa (almeno 3 per ogni voce)", obbligatorio: true, completato: false },
+          { nome: "Visura camerale aggiornata", obbligatorio: true, completato: false },
+          { nome: "Atto costitutivo e statuto", obbligatorio: true, completato: false },
+        ],
+  );
 
-  // Prefer structured R1 data over regex-parsed legacy string
-  const ratingStrutturato = eligStrutt?.rating;
-  const probStrutturata = eligStrutt?.probabilita;
-
-  const probMatch = eligibility.match(/PROBABILITÀ\s*APPROVAZIONE\s*[:\-]?\s*(\d+)/i);
-  const probabilita = probMatch ? parseInt(probMatch[1]) : null;
-
-  const statoMatch = eligibility.match(/CLASSIFICAZIONE FINALE:\s*\[?(\w+)\]?/i);
-  const stato = statoMatch?.[1]?.toUpperCase() ?? "N/D";
-
-  const handleExport = useCallback(async (type: "docx" | "pptx") => {
-    setExporting(type);
-    try {
-      const res = await fetch("/api/export", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type, data: {
-            azienda, calcolo, deepScan: deepScan || {},
-            businessPlan: bpData, eligibility: eligibilityChecks,
-            checklist: checklistItems,
-          },
-        }),
-      });
-      if (!res.ok) throw new Error("Export failed");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = type === "docx"
-        ? `dossier_${azienda.ragione_sociale.replace(/\s+/g, "_")}.docx`
-        : `pitch_${azienda.ragione_sociale.replace(/\s+/g, "_")}.pptx`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Export error:", err);
-    } finally {
-      setExporting(null);
+  useEffect(() => {
+    if (rawChecklist.length > 0) {
+      setChecklist(rawChecklist.map((c) => ({ ...c, completato: false })));
     }
-  }, [azienda, calcolo, deepScan, bpData, eligibilityChecks, checklistItems]);
+  }, [rawChecklist]);
 
   const tabs: { key: ResultTab; label: string }[] = [
-    { key: "overview", label: "Overview" },
-    { key: "requirements", label: "Requisiti Tecnici" },
-    { key: "financial", label: "Piano Finanziario" },
-    { key: "documents", label: "Documenti Generati" },
+    { key: "overview", label: "Overview & Esito" },
+    { key: "analysis", label: "Analisi Tecnica e Spese" },
+    ...(custom_prompt ? [{ key: "custom" as const, label: "Analisi Custom" }] : []),
+    { key: "data", label: "Dati Core" },
+    { key: "checklist", label: "Checklist Pratica" },
   ];
 
-  const overall = ratingStrutturato || eligibilityChecks?.overall || stato;
-  const prob = probStrutturata ?? eligibilityChecks?.probabilita ?? probabilita;
-  const probColor = prob != null ? (prob >= 75 ? "text-emerald-400" : prob >= 40 ? "text-yellow-400" : "text-red-400") : "text-gray-400";
-  const investValue = calcolo.investimento_effettivo;
-  const contribValue = calcolo.contributo;
-  const finanzValue = calcolo.finanziamento;
+  const toggleChecklist = (index: number) => {
+    setChecklist((prev) => prev.map((c, i) => (i === index ? { ...c, completato: !c.completato } : c)));
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header + Export buttons */}
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-4">
           <h2 className="text-xl font-semibold text-white">Risultati Analisi</h2>
-          <StatusBadge stato={stato} probabilita={prob} />
+          <StatusBadge stato={rating} probabilita={probabilita ?? null} />
         </div>
-
       </div>
 
       {/* Tab Navigation */}
       <div className="border-b border-white/[0.06]">
-        <div className="flex gap-6">
+        <div className="flex gap-6 overflow-x-auto">
           {tabs.map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className={`pb-3 text-sm font-medium transition-colors relative ${tab === t.key ? "text-emerald-400" : "text-gray-500 hover:text-gray-300"}`}
+              className={`pb-3 text-sm font-medium transition-colors relative whitespace-nowrap ${tab === t.key ? "text-emerald-400" : "text-gray-500 hover:text-gray-300"}`}
             >
               {t.label}
               {tab === t.key && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500 rounded-full" />}
@@ -145,466 +99,266 @@ export default function ResultsView({ response, azienda, deepScan }: Props) {
         </div>
       </div>
 
-      {/* ── OVERVIEW TAB (P5 + P6) ── */}
+      {/* ── TAB 1: Overview & Esito ── */}
       {tab === "overview" && (
-        <div className="space-y-6 animate-fade-in">
-          {/* Riga 1 — Primarie */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="glass rounded-2xl p-5 flex flex-col justify-between">
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-gray-500">Classificazione</p>
-              <div className={`mt-3 px-4 py-4 rounded-xl text-center ${
-                overall === "VERDE" ? "bg-emerald-900/20 border border-emerald-500/20" :
-                overall === "ROSSO" ? "bg-red-900/20 border border-red-500/20" :
-                overall === "GRIGIO" ? "bg-gray-900/20 border border-gray-500/20" :
-                "bg-yellow-900/20 border border-yellow-500/20"
-              }`}>
-                <span className={`text-3xl font-bold ${
-                  overall === "VERDE" ? "text-emerald-400" :
-                  overall === "ROSSO" ? "text-red-400" :
-                  overall === "GRIGIO" ? "text-gray-400" : "text-yellow-400"
-                }`}>{overall}</span>
-              </div>
-            </div>
-            <div className="glass rounded-2xl p-5 flex flex-col justify-between">
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-gray-500">Probabilità</p>
-              <p className={`text-3xl font-bold mt-3 ${probColor}`}>{prob != null ? `${prob}%` : "N/D"}</p>
-            </div>
-          </div>
-
-          {/* Riga 2 — Secondarie */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <StatCard label="Investimento" value={
-              investValue != null ? `€${investValue.toLocaleString()}` :
-              <span className="text-gray-500 text-sm">Da definire <span className="text-[10px]">— inserisci importo</span></span>
-            } />
-            <StatCard label="Contributo" value={`€${contribValue?.toLocaleString() ?? "—"}`} valueClass="text-emerald-400" />
-            <StatCard label="Finanziamento Agevolato" value={`€${finanzValue?.toLocaleString() ?? "—"}`} valueClass="text-emerald-400" />
-          </div>
-
-          {/* Riga 3 — Terziarie con semaforo */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <MiniCard label="DSCR" value={
-              bpData?.dscr == null || bpData.dscr === 0
-                ? <span className="text-gray-500 text-sm">N/C</span>
-                : bpData.dscr.toFixed(2)
-            } semaforo={
-              bpData?.dscr == null || bpData.dscr === 0 ? "GIALLO" :
-              bpData.dscr >= 1.3 ? "VERDE" :
-              bpData.dscr >= 1.0 ? "GIALLO" : "ROSSO"
-            } messaggio={
-              bpData?.dscr == null || bpData.dscr === 0 ? "Dati insufficienti" :
-              bpData.dscr >= 1.3 ? "Ottimo" :
-              bpData.dscr >= 1.0 ? "Adeguato" : "Sotto soglia (min 1.0)"
-            } />
-            <MiniCard label="Payback" value={bpData?.payback_anni != null ? `${bpData.payback_anni} anni` : "—"} semaforo={
-              bpData?.payback_anni == null ? "GIALLO" :
-              bpData.payback_anni <= 3 ? "VERDE" :
-              bpData.payback_anni <= 5 ? "GIALLO" : "ROSSO"
-            } messaggio={
-              bpData?.payback_anni == null ? "Dati insufficienti" :
-              bpData.payback_anni <= 3 ? "Recupero rapido" :
-              bpData.payback_anni <= 5 ? "Recupero standard" : "Recupero lungo"
-            } />
-            <MiniCard label="VAN" value={
-              bpData?.van != null
-                ? `€${bpData.van.toLocaleString()}`
-                : "—"
-            } semaforo={
-              bpData?.van == null ? "GIALLO" :
-              bpData.van > 0 ? "VERDE" : "ROSSO"
-            } messaggio={
-              bpData?.van == null ? "Dati insufficienti" :
-              bpData.van > 0 ? "Progetto redditizio" : "Progetto non redditizio"
-            } />
-            <MiniCard label="IRR" value={
-              bpData?.irr != null && (bpData.irr > 1000 || bpData.irr <= 0)
-                ? <span className="text-yellow-400">N/A</span>
-                : bpData?.irr != null ? `${bpData.irr.toFixed(2)}%` : "—"
-            } semaforo={
-              bpData?.irr == null || bpData.irr > 1000 || bpData.irr <= 0 ? "GIALLO" :
-              bpData.irr > 10 ? "VERDE" :
-              bpData.irr > 5 ? "GIALLO" : "ROSSO"
-            } messaggio={
-              bpData?.irr == null || bpData.irr > 1000 || bpData.irr <= 0 ? "Valore fuori range" :
-              bpData.irr > 10 ? "Rendimento elevato" :
-              bpData.irr > 5 ? "Rendimento adeguato" : "Rendimento basso"
-            } />
-          </div>
-
-          {/* Structured Verifiche from DeepSeek-R1 */}
-          {eligStrutt?.verifiche && eligStrutt.verifiche.length > 0 && (
-            <div className="glass rounded-2xl p-5">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Verifiche Eligibility (R1)</h3>
-              <div className="space-y-2">
-                {eligStrutt.verifiche.map((v, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02]">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-white">{v.nome}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{v.dettaglio}</p>
-                    </div>
-                    <span className={`ml-3 text-xs font-medium px-2.5 py-1 rounded-full ${
-                      v.rating === "VERDE" ? "bg-emerald-900/30 text-emerald-400" :
-                      v.rating === "GIALLO" ? "bg-yellow-900/30 text-yellow-400" :
-                      v.rating === "ROSSO" ? "bg-red-900/30 text-red-400" :
-                      "bg-gray-900/30 text-gray-400"
-                    }`}>{v.rating}</span>
-                  </div>
-                ))}
-              </div>
-              {eligStrutt.de_minimis_check && (
-                <div className="mt-3 p-3 rounded-xl bg-white/[0.02]">
-                  <p className="text-xs text-gray-400">De Minimis: <span className="text-white font-medium">{eligStrutt.de_minimis_check.regime_applicabile}</span> — Residuo: <span className="text-white font-medium">€{eligStrutt.de_minimis_check.importo_residuo.toLocaleString()}</span></p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Eligibility Table (P6) */}
-          <div className="glass rounded-2xl p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Verifica Eligibility</h3>
-            {eligibilityChecks?.checks && eligibilityChecks.checks.length > 0 ? (
-              <div className="overflow-hidden rounded-xl border border-white/[0.04]">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-white/[0.02]">
-                      <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Criterio</th>
-                      <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Requisito del Bando</th>
-                      <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Dato Azienda</th>
-                      <th className="text-center px-4 py-2.5 text-gray-400 font-medium">Esito</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {eligibilityChecks.checks.map((check, i) => {
-                      const parts = check.dettaglio.split("—").map((s) => s.trim());
-                      const requisito = parts.length > 1 ? parts[0] : "";
-                      const dato = parts.length > 1 ? parts.slice(1).join(" — ") : check.dettaglio;
-                      return (
-                        <tr key={i} className={`border-t border-white/[0.04] ${i % 2 === 0 ? "bg-white/[0.01]" : ""}`}>
-                          <td className="px-4 py-2.5 text-white font-medium">{check.nome}</td>
-                          <td className="px-4 py-2.5 text-gray-400">{requisito || "—"}</td>
-                          <td className="px-4 py-2.5 text-gray-300">{dato}</td>
-                          <td className="px-4 py-2.5 text-center">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                              check.status === "PASS" ? "bg-emerald-900/30 text-emerald-400" :
-                              check.status === "WARN" ? "bg-yellow-900/30 text-yellow-400" :
-                              "bg-red-900/30 text-red-400"
-                            }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${
-                                check.status === "PASS" ? "bg-emerald-500" :
-                                check.status === "WARN" ? "bg-yellow-500" : "bg-red-500"
-                              }`} />
-                              {check.status === "PASS" ? "OK" : check.status === "WARN" ? "VERIFICA" : "INSUFFICIENTE"}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {eligibilityChecks.motivazioni && (
-                  <div className="mt-4 p-4 rounded-xl bg-yellow-900/10 border border-yellow-500/10">
-                    <p className="text-xs font-semibold text-yellow-400 mb-1">Raccomandazioni prioritarie</p>
-                    <p className="text-sm text-gray-300">{eligibilityChecks.motivazioni}</p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="prose prose-invert max-w-none text-sm text-gray-400">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{eligibility}</ReactMarkdown>
+        <div className="space-y-5 animate-fade-in">
+          {/* Rating badge + probabilita */}
+          <div className="flex items-center gap-6 flex-wrap">
+            <RatingBadge rating={rating} size="lg" />
+            {probabilita != null && (
+              <div className="text-center">
+                <p className={`text-3xl font-bold ${probabilita >= 75 ? "text-emerald-400" : probabilita >= 40 ? "text-yellow-400" : probabilita > 0 ? "text-red-400" : "text-gray-400"}`}>{probabilita}%</p>
+                <p className="text-[10px] text-gray-500 uppercase tracking-[0.1em] mt-0.5">Probabilità</p>
               </div>
             )}
           </div>
 
-          {/* Valutazioni */}
+          {/* Dati Chiave Concessione */}
           <div className="glass rounded-2xl p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-3">Valutazioni</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <span className="text-gray-500 text-sm">Stato bilanci:</span>{" "}
-                <span className={`text-sm font-semibold ${valBil.stato === "VERDE" ? "text-emerald-400" : valBil.stato === "ROSSO" ? "text-red-400" : "text-yellow-400"}`}>{valBil.stato}</span>
-                <p className="text-gray-500 text-sm mt-1">{valBil.dettaglio}</p>
-              </div>
-              <div>
-                <span className="text-gray-500 text-sm">Stato fatturato:</span>{" "}
-                <span className={`text-sm font-semibold ${valFat.stato === "VERDE" ? "text-emerald-400" : valFat.stato === "ROSSO" ? "text-red-400" : "text-yellow-400"}`}>{valFat.stato}</span>
-                <p className="text-gray-500 text-sm mt-1">{valFat.dettaglio}</p>
-              </div>
-              {indFin && (
-                <div>
-                  <span className="text-gray-500 text-sm">Indipendenza Finanziaria:</span>{" "}
-                  <span className={`text-sm font-semibold ${indFin.stato === "VERDE" ? "text-emerald-400" : indFin.stato === "ROSSO" ? "text-red-400" : "text-yellow-400"}`}>{indFin.stato}</span>
-                  <p className="text-gray-500 text-sm mt-1">{indFin.dettaglio}</p>
-                </div>
-              )}
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Dati Chiave Concessione</h3>
+            <div className="overflow-hidden rounded-xl border border-white/[0.04]">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-white/[0.02]">
+                    <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Parametro</th>
+                    <th className="text-right px-4 py-2.5 text-gray-400 font-medium">Valore</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-white/[0.04]">
+                    <td className="px-4 py-2.5 text-gray-300">Contributo Massimo Concedibile</td>
+                    <td className="px-4 py-2.5 text-right text-white font-medium">€{(esito?.contributo_massimo_concedibile ?? calcolo?.contributo ?? 0).toLocaleString()}</td>
+                  </tr>
+                  <tr className="border-t border-white/[0.04] bg-white/[0.01]">
+                    <td className="px-4 py-2.5 text-gray-300">Intensità d'aiuto</td>
+                    <td className="px-4 py-2.5 text-right text-emerald-400 font-medium">{esito?.intensita_aiuto ?? calcolo?.aliquota_contributo ?? 0}%</td>
+                  </tr>
+                  <tr className="border-t border-white/[0.04]">
+                    <td className="px-4 py-2.5 text-gray-300">Regime di aiuti</td>
+                    <td className="px-4 py-2.5 text-right text-white font-medium">{esito?.regime_aiuti || "N/D"}</td>
+                  </tr>
+                  <tr className="border-t border-white/[0.04] bg-white/[0.01]">
+                    <td className="px-4 py-2.5 text-gray-300">Investimento</td>
+                    <td className="px-4 py-2.5 text-right text-white font-medium">€{(calcolo?.investimento_effettivo ?? azienda.investimento ?? 0).toLocaleString()}</td>
+                  </tr>
+                  <tr className="border-t border-white/[0.04]">
+                    <td className="px-4 py-2.5 text-gray-300">Finanziamento Agevolato</td>
+                    <td className="px-4 py-2.5 text-right text-emerald-400 font-medium">€{(calcolo?.finanziamento ?? 0).toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Scudo Anti-Errore */}
+          {scudo && (
+            <div className="glass rounded-2xl p-5 border border-yellow-500/10">
+              <h3 className="text-xs font-semibold text-yellow-400 uppercase tracking-[0.1em] mb-3">Scudo Anti-Errore</h3>
+              <p className="text-sm text-gray-300 leading-relaxed">{scudo}</p>
+            </div>
+          )}
+
+          {/* Riga KPI finanziari supplementari */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="glass rounded-xl px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-500">DSCR</p>
+              <p className={`text-sm font-bold mt-0.5 ${bpData?.dscr != null && bpData.dscr >= 1.3 ? "text-emerald-400" : bpData?.dscr != null && bpData.dscr >= 1.0 ? "text-yellow-400" : "text-gray-400"}`}>{bpData?.dscr != null ? bpData.dscr.toFixed(2) : "N/C"}</p>
+            </div>
+            <div className="glass rounded-xl px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-500">Payback</p>
+              <p className="text-sm font-bold mt-0.5 text-white">{bpData?.payback_anni != null ? `${bpData.payback_anni} anni` : "—"}</p>
+            </div>
+            <div className="glass rounded-xl px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-500">VAN</p>
+              <p className={`text-sm font-bold mt-0.5 ${bpData?.van != null && bpData.van >= 0 ? "text-emerald-400" : "text-red-400"}`}>{bpData?.van != null ? `€${bpData.van.toLocaleString()}` : "—"}</p>
+            </div>
+            <div className="glass rounded-xl px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-500">IRR</p>
+              <p className="text-sm font-bold mt-0.5 text-emerald-400">{bpData?.irr != null && bpData.irr <= 1000 ? `${bpData.irr.toFixed(1)}%` : "N/A"}</p>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── REQUIREMENTS TAB ── */}
-      {tab === "requirements" && deepScan && (
-        <div className="space-y-6 animate-fade-in">
+      {/* ── TAB 2: Analisi Tecnica e Spese ── */}
+      {tab === "analysis" && (
+        <div className="animate-fade-in">
           <div className="glass rounded-2xl p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Codici ATECO</h3>
-            <div className="space-y-3">
-              <div>
-                <p className="text-sm text-gray-400 mb-1">Ammessi:</p>
-                <div className="flex flex-wrap gap-2">
-                  {deepScan.ateco_ammessi?.map((a, i) => (
-                    <span key={i} className="px-2.5 py-1 rounded-lg bg-emerald-900/20 text-emerald-400 text-xs font-medium border border-emerald-500/10">{a}</span>
-                  )) || <span className="text-gray-600 text-sm">—</span>}
-                </div>
-              </div>
-              {deepScan.ateco_esclusi?.length > 0 && (
-                <div>
-                  <p className="text-sm text-gray-400 mb-1">Esclusi:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {deepScan.ateco_esclusi.map((a, i) => (
-                      <span key={i} className="px-2.5 py-1 rounded-lg bg-red-900/20 text-red-400 text-xs font-medium border border-red-500/10">{a}</span>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Corrispondenza Spese — Bando</h3>
+            {analisiTecnica.length > 0 ? (
+              <div className="overflow-hidden rounded-xl border border-white/[0.04]">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-white/[0.02]">
+                      <th className="text-left px-4 py-2.5 text-gray-400 font-medium w-[30%]">Spesa Inserita</th>
+                      <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Articolo / Corrispondenza nel Bando</th>
+                      <th className="text-right px-4 py-2.5 text-gray-400 font-medium w-[12%]">Aliquota</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analisiTecnica.map((item, i) => (
+                      <tr key={i} className={`border-t border-white/[0.04] ${i % 2 === 0 ? "bg-white/[0.01]" : ""}`}>
+                        <td className="px-4 py-2.5 text-white font-medium">{item.categoria_spesa}</td>
+                        <td className="px-4 py-2.5 text-gray-400">{item.corrispondenza}</td>
+                        <td className="px-4 py-2.5 text-right text-emerald-400 font-medium">{item.aliquota != null ? `${item.aliquota}%` : "—"}</td>
+                      </tr>
                     ))}
-                  </div>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">Nessuna corrispondenza disponibile</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 3: Analisi Custom ── */}
+      {tab === "custom" && (
+        <div className="animate-fade-in">
+          <div className="glass rounded-2xl p-5">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Risposta alla Richiesta Specifica</h3>
+            {custom_prompt && (
+              <div className="mb-4 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+                <p className="text-[10px] text-gray-500 uppercase tracking-[0.1em] mb-1">Richiesta inserita</p>
+                <p className="text-sm text-gray-300 italic">{custom_prompt}</p>
+              </div>
+            )}
+            <div className="p-4 rounded-xl bg-emerald-900/10 border border-emerald-500/10">
+              <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">{analisiCustom || "Nessuna risposta disponibile."}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 4: Dati Core ── */}
+      {tab === "data" && (
+        <div className="animate-fade-in space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Dati Core Bando */}
+            <div className="glass rounded-2xl p-5">
+              <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-[0.1em] mb-4">Dati Core Bando</h3>
+              <div className="space-y-3">
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Ente</span>
+                  <span className="text-sm text-white font-medium">—</span>
                 </div>
-              )}
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Scadenza</span>
+                  <span className="text-sm text-white font-medium">{deepScan?.scadenze?.[0]?.chiusura || "—"}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Budget / Massimale</span>
+                  <span className="text-sm text-white font-medium">
+                    {deepScan?.massimali_spesa?.[0] ? `€${deepScan.massimali_spesa[0].importo.toLocaleString()}` : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Investimento Min</span>
+                  <span className="text-sm text-white font-medium">
+                    {deepScan?.spese_ammissibili?.[0]?.aliquota != null ? `${deepScan.spese_ammissibili[0].aliquota}%` : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5">
+                  <span className="text-sm text-gray-500">Requisiti Accesso</span>
+                  <span className="text-sm text-white font-medium text-right max-w-[200px]">{deepScan?.requisiti_accesso?.slice(0, 2).join(", ") || "—"}</span>
+                </div>
+              </div>
             </div>
-          </div>
 
-          {/* Mappatura Costi da DeepSeek-R1 */}
-          {eligStrutt?.costi_mappati && eligStrutt.costi_mappati.length > 0 && (
+            {/* Dati Core Azienda */}
             <div className="glass rounded-2xl p-5">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Mappatura Costi per Categoria</h3>
-              <div className="overflow-hidden rounded-xl border border-white/[0.04]">
-                <table className="w-full text-sm">
-                  <thead><tr className="bg-white/[0.02]">
-                    <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Categoria</th>
-                    <th className="text-right px-4 py-2.5 text-gray-400 font-medium">Importo</th>
-                    <th className="text-right px-4 py-2.5 text-gray-400 font-medium">Aliquota</th>
-                  </tr></thead>
-                  <tbody>{eligStrutt.costi_mappati.map((c, i) => (
-                    <tr key={i} className="border-t border-white/[0.04]">
-                      <td className="px-4 py-2.5 text-white">{c.categoria}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-200">€{c.importo.toLocaleString()}</td>
-                      <td className="px-4 py-2.5 text-right text-emerald-400 font-medium">{c.aliquota}%</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
+              <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-[0.1em] mb-4">Dati Core Azienda</h3>
+              <div className="space-y-3">
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Ragione Sociale</span>
+                  <span className="text-sm text-white font-medium">{azienda.ragione_sociale}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">ATECO</span>
+                  <span className="text-sm text-white font-medium">{azienda.ateco || "—"}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Sede</span>
+                  <span className="text-sm text-white font-medium">{azienda.sede_legale || azienda.regione || "—"}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Fatturato</span>
+                  <span className="text-sm text-white font-medium">€{(azienda.fatturato || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-white/[0.04]">
+                  <span className="text-sm text-gray-500">Dipendenti</span>
+                  <span className="text-sm text-white font-medium">{azienda.dipendenti || 0}</span>
+                </div>
+                <div className="flex justify-between py-1.5">
+                  <span className="text-sm text-gray-500">Investimento Totale</span>
+                  <span className="text-sm text-white font-medium">€{(azienda.investimento || 0).toLocaleString()}</span>
+                </div>
               </div>
             </div>
-          )}
-
-          <div className="glass rounded-2xl p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Massimali di Spesa</h3>
-            {deepScan.massimali_spesa?.length > 0 ? (
-              <div className="space-y-3">
-                {deepScan.massimali_spesa.map((m, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02]">
-                    <div><p className="text-sm font-medium text-white">{m.regime}</p>{m.articolo && <p className="text-[11px] text-emerald-500/70">{m.articolo}</p>}</div>
-                    <div className="text-right"><p className="text-sm font-bold text-white">€{m.importo.toLocaleString()}</p>{m.periodo && <p className="text-[11px] text-gray-500">{m.periodo}</p>}</div>
-                  </div>
-                ))}
-              </div>
-            ) : <p className="text-sm text-gray-500">—</p>}
           </div>
 
+          {/* Riepilogo Finanziario */}
           <div className="glass rounded-2xl p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Scadenze</h3>
-            {deepScan.scadenze?.length > 0 ? (
-              <div className="space-y-3">
-                {deepScan.scadenze.map((s, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02]">
-                    <div><p className="text-sm text-white">{s.apertura ? `${s.apertura} → ` : ""}{s.chiusura}</p>{s.articolo && <p className="text-[11px] text-emerald-500/70">{s.articolo}</p>}</div>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${s.perentoria ? "bg-red-900/30 text-red-400" : "bg-yellow-900/30 text-yellow-400"}`}>{s.perentoria ? "Perentoria" : "Indicativa"}</span>
-                  </div>
-                ))}
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Riepilogo Finanziario</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="p-3 rounded-xl bg-white/[0.02]">
+                <p className="text-gray-500 text-xs">Contributo</p>
+                <p className="text-emerald-400 font-bold text-lg">€{(calcolo?.contributo || 0).toLocaleString()}</p>
               </div>
-            ) : <p className="text-sm text-gray-500">—</p>}
-          </div>
-
-          <div className="glass rounded-2xl p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Criteri di Valutazione</h3>
-            {deepScan.criteri_valutazione?.length > 0 ? (
-              <div className="space-y-2">
-                {deepScan.criteri_valutazione.map((c, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02]">
-                    <div className="flex-1"><p className="text-sm text-white">{c.criterio}</p>{c.articolo && <p className="text-[11px] text-emerald-500/70">{c.articolo}</p>}</div>
-                    <div className="text-right flex-shrink-0 ml-4"><span className="text-sm font-bold text-emerald-400">{c.punteggio_massimo} pt</span>{c.peso && <span className="text-xs text-gray-500 ml-2">({c.peso}%)</span>}</div>
-                  </div>
-                ))}
+              <div className="p-3 rounded-xl bg-white/[0.02]">
+                <p className="text-gray-500 text-xs">Finanziamento</p>
+                <p className="text-emerald-400 font-bold text-lg">€{(calcolo?.finanziamento || 0).toLocaleString()}</p>
               </div>
-            ) : <p className="text-sm text-gray-500">—</p>}
-          </div>
-
-          <div className="glass rounded-2xl p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Spese Ammissibili</h3>
-            {deepScan.spese_ammissibili?.length > 0 ? (
-              <div className="overflow-hidden rounded-xl border border-white/[0.04]">
-                <table className="w-full text-sm">
-                  <thead><tr className="bg-white/[0.02]">
-                    <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Categoria</th>
-                    <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Dettaglio</th>
-                    <th className="text-right px-4 py-2.5 text-gray-400 font-medium">Aliquota</th>
-                  </tr></thead>
-                  <tbody>{deepScan.spese_ammissibili.map((s, i) => (
-                    <tr key={i} className="border-t border-white/[0.04]">
-                      <td className="px-4 py-2.5 text-white">{s.categoria}</td>
-                      <td className="px-4 py-2.5 text-gray-500">{s.dettaglio}</td>
-                      <td className="px-4 py-2.5 text-right text-emerald-400 font-medium">{s.aliquota}%</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
+              <div className="p-3 rounded-xl bg-white/[0.02]">
+                <p className="text-gray-500 text-xs">DSCR</p>
+                <p className="text-white font-bold text-lg">{bpData?.dscr != null ? bpData.dscr.toFixed(2) : "—"}</p>
               </div>
-            ) : <p className="text-sm text-gray-500">—</p>}
-          </div>
-
-          <div className="glass rounded-2xl p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Regimi di Aiuto</h3>
-            {deepScan.regimi_aiuto?.length > 0 ? (
-              <div className="space-y-3">
-                {deepScan.regimi_aiuto.map((r, i) => (
-                  <div key={i} className="p-3 rounded-xl bg-white/[0.02]">
-                    <div className="flex items-center justify-between"><p className="text-sm font-medium text-white">{r.tipo}</p><span className="text-sm font-bold text-emerald-400">{r.intensita_massima}%</span></div>
-                    <p className="text-xs text-gray-500 mt-0.5">{r.regolamento}</p>
-                    {r.articolo && <p className="text-[11px] text-emerald-500/70 mt-0.5">{r.articolo}</p>}
-                  </div>
-                ))}
+              <div className="p-3 rounded-xl bg-white/[0.02]">
+                <p className="text-gray-500 text-xs">IRR</p>
+                <p className="text-white font-bold text-lg">{bpData?.irr != null && bpData.irr <= 1000 ? `${bpData.irr.toFixed(1)}%` : "—"}</p>
               </div>
-            ) : <p className="text-sm text-gray-500">—</p>}
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── FINANCIAL TAB ── */}
-      {tab === "financial" && (
-        <div className="space-y-6 animate-fade-in">
+      {/* ── TAB 5: Checklist Pratica ── */}
+      {tab === "checklist" && (
+        <div className="animate-fade-in">
           <div className="glass rounded-2xl p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Dettaglio Calcolo Finanziario</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div><span className="text-gray-500">Contributo:</span> <span className="text-white font-medium">€{calcolo.contributo?.toLocaleString()}</span></div>
-              <div><span className="text-gray-500">Finanziamento:</span> <span className="text-white font-medium">€{calcolo.finanziamento?.toLocaleString()}</span></div>
-              <div><span className="text-gray-500">Aliquota contributo:</span> <span className="text-white font-medium">{calcolo.aliquota_contributo}%</span></div>
-              <div><span className="text-gray-500">Aliquota finanziamento:</span> <span className="text-white font-medium">{calcolo.aliquota_finanziamento}%</span></div>
-            </div>
-            {calcolo.troncato && <p className="mt-3 text-yellow-400/80 text-sm">Investimento troncato al massimale del bando</p>}
-            {!calcolo.successo && calcolo.errore && <p className="mt-3 text-red-400/80 text-sm">{calcolo.errore}</p>}
-          </div>
-
-          <div className="glass rounded-2xl p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Indicatori Economici</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div className="p-3 rounded-xl bg-white/[0.02]"><p className="text-gray-500 text-xs">DSCR</p><p className="text-white font-bold text-lg">{bpData?.dscr ?? "—"}</p></div>
-              <div className="p-3 rounded-xl bg-white/[0.02]"><p className="text-gray-500 text-xs">Payback</p><p className="text-white font-bold text-lg">{bpData?.payback_anni ?? "—"} anni</p></div>
-              <div className="p-3 rounded-xl bg-white/[0.02]"><p className="text-gray-500 text-xs">VAN</p><p className={`font-bold text-lg ${bpData?.van != null && bpData.van < 0 ? "text-red-400" : "text-emerald-400"}`}>€{bpData?.van?.toLocaleString() ?? "—"}</p></div>
-              <div className="p-3 rounded-xl bg-white/[0.02]"><p className="text-gray-500 text-xs">IRR</p><p className="text-emerald-400 font-bold text-lg">{bpData?.irr ?? "—"}%</p></div>
-            </div>
-          </div>
-
-          {bpData?.cashflow && bpData.cashflow.length > 0 && (
-            <div className="glass rounded-2xl p-5">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Proiezioni Cashflow</h3>
-              <div className="overflow-hidden rounded-xl border border-white/[0.04]">
-                <table className="w-full text-sm">
-                  <thead><tr className="bg-white/[0.02]">
-                    <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Anno</th>
-                    <th className="text-right px-4 py-2.5 text-gray-400 font-medium">Ricavi</th>
-                    <th className="text-right px-4 py-2.5 text-gray-400 font-medium">Costi</th>
-                    <th className="text-right px-4 py-2.5 text-gray-400 font-medium">Netto</th>
-                  </tr></thead>
-                  <tbody>{bpData.cashflow.map((c) => (
-                    <tr key={c.anno} className="border-t border-white/[0.04]">
-                      <td className="px-4 py-2.5 text-white font-medium">Anno {c.anno}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-200">€{c.ricavi.toLocaleString()}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-400">€{c.costi.toLocaleString()}</td>
-                      <td className={`px-4 py-2.5 text-right font-medium ${c.netto >= 0 ? "text-emerald-400" : "text-red-400"}`}>€{c.netto.toLocaleString()}</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          <div className="glass rounded-2xl p-5 prose prose-invert max-w-none prose-emerald prose-headings:text-white prose-a:text-emerald-400">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{businessPlan}</ReactMarkdown>
-          </div>
-        </div>
-      )}
-
-      {/* ── DOCUMENTS TAB (P7) ── */}
-      {tab === "documents" && (
-        <div className="space-y-6 animate-fade-in">
-          <div className="glass rounded-2xl p-5">
-            <DocumentChecklist items={checklistItems} onChange={setChecklistItems} />
-          </div>
-
-          {calcolo.successo && (
-            <div className="glass rounded-2xl p-5">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Generazione Documenti</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <button onClick={() => handleExport("docx")} disabled={exporting === "docx"}
-                  className="flex items-center gap-4 p-4 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] transition-all disabled:opacity-50 text-left">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                    <svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Documenti Necessari alla Presentazione</h3>
+            <div className="space-y-1">
+              {checklist.map((item, i) => (
+                <div key={i}
+                  className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${
+                    item.completato ? "bg-emerald-900/10 border border-emerald-500/10" : "bg-white/[0.02] border border-transparent hover:bg-white/[0.04]"
+                  }`}
+                  onClick={() => toggleChecklist(i)}
+                >
+                  <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                    item.completato ? "bg-emerald-500 border-emerald-500" : "border-gray-600 hover:border-gray-500"
+                  }`}>
+                    {item.completato && (
+                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
                   </div>
-                  <div><p className="text-sm font-medium text-white">{exporting === "docx" ? "Generazione in corso..." : "Dossier Tecnico (DOCX)"}</p><p className="text-xs text-gray-500 mt-0.5">Sintesi bando, piano investimenti, cronoprogramma, DSCR, checklist documentale</p></div>
-                </button>
-                <button onClick={() => handleExport("pptx")} disabled={exporting === "pptx"}
-                  className="flex items-center gap-4 p-4 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] transition-all disabled:opacity-50 text-left">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                    <svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium ${item.completato ? "text-emerald-400 line-through" : "text-white"}`}>{item.nome}</p>
                   </div>
-                  <div><p className="text-sm font-medium text-white">{exporting === "pptx" ? "Generazione in corso..." : "Pitch di Presentazione (PPTX)"}</p><p className="text-xs text-gray-500 mt-0.5">Slide overview, financials, requisiti bando, eligibility checks per il cliente</p></div>
-                </button>
-              </div>
+                  {item.obbligatorio && (
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-900/30 text-red-400 flex-shrink-0">Obbligatorio</span>
+                  )}
+                </div>
+              ))}
             </div>
-          )}
-
-          {/* Technical Notes — Reasoning Trace da DeepSeek-R1 */}
-          {technicalNotes && (
-            <div className="glass rounded-2xl p-5">
-              <button onClick={() => setShowTechnicalNotes(!showTechnicalNotes)}
-                className="flex items-center gap-2 w-full text-left">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em]">Note Tecniche (Traccia di Ragionamento R1)</h3>
-                <svg className={`w-4 h-4 text-gray-500 transition-transform ${showTechnicalNotes ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {showTechnicalNotes && (
-                <pre className="mt-3 text-xs text-gray-400 whitespace-pre-wrap font-mono bg-white/[0.02] rounded-xl p-4 max-h-64 overflow-y-auto border border-white/[0.04]">{technicalNotes}</pre>
+            <div className="mt-4 flex items-center justify-between pt-3 border-t border-white/[0.04]">
+              <p className="text-xs text-gray-500">{checklist.filter((c) => c.completato).length} / {checklist.length} documenti pronti</p>
+              {checklist.filter((c) => c.completato).length === checklist.length && checklist.length > 0 && (
+                <span className="text-xs font-medium text-emerald-400">Tutti i documenti sono pronti</span>
               )}
-            </div>
-          )}
-
-          {/* Valutazione Tecnica strutturata (P7) */}
-          <div className="glass rounded-2xl p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-[0.1em] mb-4">Valutazione Tecnica</h3>
-            <div className="space-y-4">
-              {(() => {
-                const sections = parseValutazioneTecnica(eligibility || "");
-                if (sections.length === 0) return <p className="text-sm text-gray-500">Nessun dato disponibile</p>;
-                return sections.map((sec, i) => {
-                  switch (sec.type) {
-                    case "h4":
-                      return <div key={i}><h4 className="text-sm font-semibold text-white mb-1">{sec.label}</h4><p className="text-sm text-gray-300">{sec.content as string}</p></div>;
-                    case "p":
-                      return <p key={i} className="text-sm text-gray-300">{sec.content as string}</p>;
-                    case "ul":
-                      return <div key={i}><h4 className="text-sm font-semibold text-white mb-2">{sec.label}</h4><ul className="space-y-1">{(sec.content as string[]).map((item, j) => <li key={j} className="flex items-start gap-2 text-sm text-gray-300"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0" />{item}</li>)}</ul></div>;
-                    case "ol":
-                      return <div key={i}><h4 className="text-sm font-semibold text-white mb-2">{sec.label}</h4><ol className="space-y-1 list-decimal list-inside">{(sec.content as string[]).map((item, j) => <li key={j} className="text-sm text-gray-300">{item}</li>)}</ol></div>;
-                    case "table": {
-                      const { rows } = sec.content as { rows: string[][] };
-                      if (rows.length === 0) return null;
-                      const [header, ...body] = rows;
-                      return <div key={i}><h4 className="text-sm font-semibold text-white mb-2">{sec.label}</h4><div className="overflow-hidden rounded-xl border border-white/[0.04]"><table className="w-full text-sm"><thead><tr className="bg-white/[0.02]">{header?.map((h, j) => <th key={j} className="text-left px-3 py-2 text-gray-400 font-medium">{h}</th>)}</tr></thead><tbody>{body.map((row, r) => <tr key={r} className="border-t border-white/[0.04]">{row.map((cell, c) => <td key={c} className="px-3 py-2 text-gray-300">{cell}</td>)}</tr>)}</tbody></table></div></div>;
-                    }
-                    case "box": {
-                      const colorMap = { verde: { bg: "bg-emerald-900/20 border-emerald-500/20 text-emerald-400", icn: "🟢" }, giallo: { bg: "bg-yellow-900/20 border-yellow-500/20 text-yellow-400", icn: "🟡" }, rosso: { bg: "bg-red-900/20 border-red-500/20 text-red-400", icn: "🔴" } };
-                      const c = colorMap[sec.boxColor || "giallo"];
-                      return <div key={i} className={`p-4 rounded-xl border ${c.bg}`}><p className="text-sm font-bold">{c.icn} {(sec.content as string).replace(/[\[\]]/g, "")}</p></div>;
-                    }
-                    default:
-                      return null;
-                  }
-                });
-              })()}
             </div>
           </div>
         </div>

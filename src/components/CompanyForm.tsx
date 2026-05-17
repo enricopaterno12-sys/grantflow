@@ -20,6 +20,7 @@ interface Props {
     de_minimis_importo: number; de_minimis_regime: string;
     descrizione_progetto: string; categoria_spesa: string;
     procedure_concorsuali: boolean;
+    custom_prompt?: string;
   }) => void;
   loading: boolean;
 }
@@ -39,6 +40,7 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
     descrizione_progetto: "", categoria_spesa: "", procedure_concorsuali: false,
   });
   const [visuraFile, setVisuraFile] = useState<File | null>(null);
+  const [customPrompt, setCustomPrompt] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<Record<string, boolean>>({});
 
@@ -63,7 +65,7 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
     if (!form.descrizione_progetto.trim()) errs.descrizione_progetto = true;
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
-    onAnalyze({ ...form, visuraFile });
+    onAnalyze({ ...form, visuraFile, custom_prompt: customPrompt || undefined });
   };
 
   const selectClass = inputClass;
@@ -294,6 +296,27 @@ export default function CompanyForm({ visuraPrefill, parametriFinanziari, regime
             </div>
           )}
         </div>
+      </div>
+
+      {/* Sezione F — Prompt Custom */}
+      <div className="glass rounded-2xl p-6 overflow-visible">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+            <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-white">Richieste di Analisi Aggiuntive (Opzionale)</h3>
+            <p className="text-xs text-gray-500">Richiesta specifica per l'IA</p>
+          </div>
+        </div>
+        <textarea
+          value={customPrompt}
+          onChange={(e) => setCustomPrompt(e.target.value)}
+          placeholder="Inserisci qui una richiesta specifica per l'IA (es. &quot;Verifica se la spesa X è ammissibile come software 4.0&quot;, &quot;Analizza in dettaglio il rischio sul cumulo dei contributi&quot;, ecc.)"
+          className={`${inputClass} min-h-[100px] resize-y`}
+        />
       </div>
 
       {submitted && Object.keys(errors).length > 0 && (

@@ -151,6 +151,35 @@ export interface VerifyEligibilityRagionata {
   de_minimis_check: DeMinimisCheck;
 }
 
+// ── Nuova Analisi Concisa (Groq) ──────────────
+export interface AnalisiEsito {
+  rating: "VERDE" | "GIALLO" | "ROSSO" | "GRIGIO";
+  probabilita: number;
+  contributo_massimo_concedibile: number;
+  intensita_aiuto: number;
+  regime_aiuti: string;
+  scudo_anti_errore: string;
+}
+
+export interface AnalisiTecnicaItem {
+  categoria_spesa: string;
+  corrispondenza: string;
+  aliquota?: number;
+}
+
+export interface ChecklistPraticaItem {
+  nome: string;
+  obbligatorio: boolean;
+  completato: boolean;
+}
+
+export interface AnalisiConcisa {
+  esito: AnalisiEsito;
+  analisi_tecnica: AnalisiTecnicaItem[];
+  analisi_custom?: string;
+  checklist_pratica: ChecklistPraticaItem[];
+}
+
 // ── Business Plan ─────────────────────────────
 export interface CashflowProjection {
   anno: number;
@@ -225,6 +254,9 @@ export interface VerifyResponse {
   business_plan_data: BusinessPlanResult;
   checklist: ChecklistItem[];
   riepilogo?: Record<string, unknown>;
+  // Nuova analisi concisa (Groq)
+  analisi_concisa?: AnalisiConcisa;
+  custom_prompt?: string;
 }
 
 // ── Legacy (kept for backward compat) ─────────
