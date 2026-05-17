@@ -6,79 +6,38 @@ import {
   BUSINESS_PLAN_TEMPLATE,
 } from "./templates";
 
-const DEEPSEEK_BASE = "https://api.deepseek.com";
-const DEEPSEEK_MODEL = "deepseek-reasoner";
 const GROQ_BASE = "https://api.groq.com/openai/v1";
 const GROQ_MODEL = "mixtral-8x7b-32768";
 
-async function callProvider(
-  baseUrl: string,
-  apiKey: string,
-  model: string,
+async function callGroq(
   system: string,
   userContent: string,
-  maxTokens: number,
-  isReasoner: boolean,
-): Promise<{ content: string; reasoningContent?: string }> {
-  const body: Record<string, unknown> = {
-    model,
-    max_tokens: maxTokens,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: userContent },
-    ],
-  };
-  // DeepSeek-R1 does not support temperature; Groq and other providers do
-  if (!isReasoner) body.temperature = 0;
+  maxTokens = 4096,
+): Promise<string> {
+  const key = process.env.GROQ_API_KEY;
+  if (!key) throw new Error("GROQ_API_KEY environment variable is not set");
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const response = await fetch(`${GROQ_BASE}/chat/completions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      temperature: 0,
+      max_tokens: maxTokens,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: userContent },
+      ],
+    }),
   });
 
   if (!response.ok) {
     const errText = await response.text();
-    if (response.status === 402) {
-      throw new Error(`402 Insufficient Balance: ${errText}`);
-    }
-    throw new Error(`API error ${response.status}: ${errText}`);
+    throw new Error(`Groq API error ${response.status}: ${errText}`);
   }
 
   const data = await response.json();
-  const message = data.choices?.[0]?.message || {};
-  return {
-    content: message.content || "",
-    reasoningContent: message.reasoning_content || undefined,
-  };
-}
-
-async function callDeepSeek(
-  system: string,
-  userContent: string,
-  maxTokens = 4096,
-): Promise<{ content: string; reasoningContent?: string }> {
-  const deepseekKey = process.env.DEEPSEEK_API_KEY;
-  const groqKey = process.env.GROQ_API_KEY;
-
-  if (!deepseekKey && !groqKey) {
-    throw new Error("No API key configured (set DEEPSEEK_API_KEY or GROQ_API_KEY in .env.local)");
-  }
-
-  // Try DeepSeek first (R1 reasoning model)
-  if (deepseekKey) {
-    try {
-      return await callProvider(DEEPSEEK_BASE, deepseekKey, DEEPSEEK_MODEL, system, userContent, maxTokens, true);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "";
-      const isBalanceError = msg.includes("402") || msg.includes("Insufficient Balance");
-      if (!isBalanceError || !groqKey) throw err;
-      console.warn("DeepSeek insufficient balance, falling back to Groq");
-    }
-  }
-
-  // Fallback to Groq
-  return await callProvider(GROQ_BASE, groqKey!, GROQ_MODEL, system, userContent, maxTokens, false);
+  return data.choices?.[0]?.message?.content || "";
 }
 
 async function ask(
@@ -90,8 +49,7 @@ async function ask(
     (acc, [key, val]) => acc.replace(`{${key}}`, val),
     userTemplate,
   );
-  const result = await callDeepSeek(system, userContent, 4096);
-  return result.content;
+  return callGroq(system, userContent, 4096);
 }
 
 function parseJsonStrict(raw: string): Record<string, unknown> {
@@ -246,18 +204,14 @@ export async function verificaEligibilityRagionata(
     .replace("{dati}", dati)
     .replace("{scheda}", scheda);
 
-  const { content, reasoningContent } = await callDeepSeek(
+  const content = await callGroq(
     "Sei un analista bandi senior. Produci SOLO JSON valido, senza markdown né testo extra.",
     userContent,
     8192,
   );
 
   const parsed = parseJsonStrict(content);
-  const technicalNotes = reasoningContent
-    ? reasoningContent.substring(0, 3000)
-    : "";
-
-  return { result: parsed, technicalNotes };
+  return { result: parsed, technicalNotes: "" };
 }
 
 export async function generaBusinessPlan(

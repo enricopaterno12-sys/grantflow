@@ -108,7 +108,7 @@ export interface EligibilityResult {
   motivazioni: string;
 }
 
-// ── DeepSeek-R1 Structured Eligibility ────────
+// ── Structured Eligibility (Groq) ──────────────
 export interface CostoMappato {
   categoria: string;
   importo: number;
