@@ -5,7 +5,11 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const sb = getSupabaseAdmin();
+    let sb;
+    try { sb = getSupabaseAdmin(); } catch {
+      return NextResponse.json({ detail: "Supabase non configurata — imposta NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY" }, { status: 500 });
+    }
+
     const { data, error } = await sb
       .from("analyses")
       .select("*")
@@ -16,10 +20,7 @@ export async function GET() {
       return NextResponse.json({ detail: error.message }, { status: 500 });
     }
 
-    const safe = (data || []).map((row) => ({
-      ...row,
-      data: sanitizeSnapshot(row.data),
-    }));
+    const safe = (data || []).map((row) => normalizeRow(row));
 
     return NextResponse.json(safe);
   } catch (err: unknown) {
@@ -31,20 +32,37 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, data, user_id } = body;
+    const { name, data: snapshot, user_id } = body;
 
-    if (!name || !data) {
+    if (!name || !snapshot) {
       return NextResponse.json({ detail: "name e data sono obbligatori" }, { status: 400 });
     }
+
+    const v = (snapshot as Record<string, unknown>)?.verifyResult as Record<string, unknown> | undefined;
+    const a = (snapshot as Record<string, unknown>)?.analyzeResult as Record<string, unknown> | undefined;
 
     const record = {
       user_id: user_id || "anonymous",
       name,
-      data: sanitizeSnapshot(data),
+      data: sanitizeSnapshot(snapshot),
       is_pinned: false,
+      // Colonne esplicite per ogni tab
+      esito_calcolato: v?.esito_calcolato || null,
+      analisi_concisa: v?.analisi_concisa || null,
+      company_data: (snapshot as Record<string, unknown>)?.companyData || null,
+      bando_info: (snapshot as Record<string, unknown>)?.bandoInfo || null,
+      vincoli_bando: a?.deep_scan || null,
+      calcolo_finanziario: v?.calcolo_finanziario || null,
+      business_plan_data: v?.business_plan_data || null,
+      custom_prompt: (v?.custom_prompt as string) || null,
+      checklist_pratica: ((v?.analisi_concisa as Record<string, unknown>)?.checklist_pratica as unknown) || (v?.checklist as unknown) || null,
     };
 
-    const sb = getSupabaseAdmin();
+    let sb;
+    try { sb = getSupabaseAdmin(); } catch {
+      return NextResponse.json({ detail: "Supabase non configurata — imposta NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY" }, { status: 500 });
+    }
+
     const { data: inserted, error } = await sb
       .from("analyses")
       .insert(record)
@@ -60,6 +78,25 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : "Errore salvataggio analisi";
     return NextResponse.json({ detail: message }, { status: 400 });
   }
+}
+
+function normalizeRow(row: Record<string, unknown>): Record<string, unknown> {
+  const rawData = (row.data && typeof row.data === "object" ? row.data : {}) as Record<string, unknown>;
+
+  return {
+    ...row,
+    data: {
+      ...rawData,
+      verifyResult: row.esito_calcolato || rawData.verifyResult
+        ? { ...((rawData.verifyResult as Record<string, unknown>) || {}), esito_calcolato: row.esito_calcolato || (rawData.verifyResult as Record<string, unknown>)?.esito_calcolato }
+        : null,
+      companyData: row.company_data || rawData.companyData || null,
+      bandoInfo: row.bando_info || rawData.bandoInfo || null,
+      analyzeResult: row.vincoli_bando || rawData.analyzeResult
+        ? { ...((rawData.analyzeResult as Record<string, unknown>) || {}), deep_scan: row.vincoli_bando || (rawData.analyzeResult as Record<string, unknown>)?.deep_scan }
+        : null,
+    },
+  };
 }
 
 function sanitizeSnapshot(d: unknown): Record<string, unknown> {

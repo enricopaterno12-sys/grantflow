@@ -8,7 +8,11 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   try {
-    const sb = getSupabaseAdmin();
+    let sb;
+    try { sb = getSupabaseAdmin(); } catch {
+      return NextResponse.json({ detail: "Supabase non configurata — imposta NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY" }, { status: 500 });
+    }
+
     const { data, error } = await sb
       .from("analyses")
       .select("*")
@@ -19,12 +23,7 @@ export async function GET(
       return NextResponse.json({ detail: "Analisi non trovata" }, { status: 404 });
     }
 
-    const safe = {
-      ...data,
-      data: sanitizeSnapshot(data.data),
-    };
-
-    return NextResponse.json(safe);
+    return NextResponse.json(normalizeRow(data));
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore recupero analisi";
     return NextResponse.json({ detail: message }, { status: 500 });
@@ -41,13 +40,31 @@ export async function PATCH(
 
     if (typeof body.name === "string") updates.name = body.name;
     if (typeof body.is_pinned === "boolean") updates.is_pinned = body.is_pinned;
-    if (body.data && typeof body.data === "object") updates.data = sanitizeSnapshot(body.data);
+    if (body.data && typeof body.data === "object") {
+      updates.data = sanitizeSnapshot(body.data);
+      const v = (body.data as Record<string, unknown>)?.verifyResult as Record<string, unknown> | undefined;
+      const a = (body.data as Record<string, unknown>)?.analyzeResult as Record<string, unknown> | undefined;
+      if (v?.esito_calcolato) updates.esito_calcolato = v.esito_calcolato;
+      if (v?.analisi_concisa) updates.analisi_concisa = v.analisi_concisa;
+      if (v?.calcolo_finanziario) updates.calcolo_finanziario = v.calcolo_finanziario;
+      if (v?.business_plan_data) updates.business_plan_data = v.business_plan_data;
+      if (v?.custom_prompt) updates.custom_prompt = v.custom_prompt;
+      if ((body.data as Record<string, unknown>)?.companyData) updates.company_data = (body.data as Record<string, unknown>).companyData;
+      if ((body.data as Record<string, unknown>)?.bandoInfo) updates.bando_info = (body.data as Record<string, unknown>).bandoInfo;
+      if (a?.deep_scan) updates.vincoli_bando = a.deep_scan;
+      const cl = (v?.analisi_concisa as Record<string, unknown>)?.checklist_pratica || v?.checklist;
+      if (cl) updates.checklist_pratica = cl;
+    }
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ detail: "Nessun campo da aggiornare" }, { status: 400 });
     }
 
-    const sb = getSupabaseAdmin();
+    let sb;
+    try { sb = getSupabaseAdmin(); } catch {
+      return NextResponse.json({ detail: "Supabase non configurata" }, { status: 500 });
+    }
+
     const { data, error } = await sb
       .from("analyses")
       .update(updates)
@@ -71,7 +88,11 @@ export async function DELETE(
   { params }: { params: { id: string } },
 ) {
   try {
-    const sb = getSupabaseAdmin();
+    let sb;
+    try { sb = getSupabaseAdmin(); } catch {
+      return NextResponse.json({ detail: "Supabase non configurata" }, { status: 500 });
+    }
+
     const { error } = await sb
       .from("analyses")
       .delete()
@@ -86,6 +107,25 @@ export async function DELETE(
     const message = err instanceof Error ? err.message : "Errore eliminazione analisi";
     return NextResponse.json({ detail: message }, { status: 500 });
   }
+}
+
+function normalizeRow(row: Record<string, unknown>): Record<string, unknown> {
+  const rawData = (row.data && typeof row.data === "object" ? row.data : {}) as Record<string, unknown>;
+
+  return {
+    ...row,
+    data: {
+      ...rawData,
+      verifyResult: row.esito_calcolato || rawData.verifyResult
+        ? { ...((rawData.verifyResult as Record<string, unknown>) || {}), esito_calcolato: row.esito_calcolato || (rawData.verifyResult as Record<string, unknown>)?.esito_calcolato }
+        : null,
+      companyData: row.company_data || rawData.companyData || null,
+      bandoInfo: row.bando_info || rawData.bandoInfo || null,
+      analyzeResult: row.vincoli_bando || rawData.analyzeResult
+        ? { ...((rawData.analyzeResult as Record<string, unknown>) || {}), deep_scan: row.vincoli_bando || (rawData.analyzeResult as Record<string, unknown>)?.deep_scan }
+        : null,
+    },
+  };
 }
 
 function sanitizeSnapshot(d: unknown): Record<string, unknown> {
