@@ -18,8 +18,8 @@ export async function analyzeBando(file: File) {
 
 export async function enrichVisura(visura: File) {
   const formData = new FormData();
-  formData.append("visura", visura);
-  const res = await api.post("/enrich", formData);
+  formData.append("file", visura);
+  const res = await api.post("/enrich", formData, { timeout: 120000 });
   return res.data;
 }
 

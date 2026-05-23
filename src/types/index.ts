@@ -309,6 +309,26 @@ export interface VerifyResponse {
   esito_calcolato?: EsitoCalcolato;
 }
 
+// ── Company Document Extraction ──────────────
+export interface CompanyExtractedData {
+  ragione_sociale?: string;
+  partita_iva?: string;
+  codice_fiscale?: string;
+  forma_giuridica?: string;
+  ateco?: string;
+  sede_legale?: string;
+  regione?: string;
+  pec?: string;
+  data_costituzione?: string;
+  fatturato?: number;
+  dipendenti?: number;
+  utile_netto?: number;
+  debiti_finanziari?: number;
+  patrimonio_netto?: number;
+  dimensione?: string;
+  note_estrazione?: string;
+}
+
 // ── Legacy (kept for backward compat) ─────────
 export interface VerifyRequest {
   dati_azienda: CompanyData;

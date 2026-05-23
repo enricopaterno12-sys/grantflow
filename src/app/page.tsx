@@ -7,7 +7,7 @@ import CompanyForm from "@/components/CompanyForm";
 import LoadingProgress from "@/components/LoadingProgress";
 import ResultsView from "@/components/ResultsView";
 import SaveModal from "@/components/SaveModal";
-import { analyzeBando, verifyEligibility, enrichVisura } from "@/lib/api";
+import { analyzeBando, verifyEligibility } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import type { AnalyzeResponse, VerifyResponse, CompanyData, Analysis } from "@/types";
 
@@ -64,7 +64,7 @@ export default function Home() {
   const handleFormSubmit = useCallback(async (data: {
     ragione_sociale: string; ateco: string; dimensione: string; regione: string;
     fatturato: number; dipendenti: number; data_costituzione: string;
-    investimento: number; finanziamento_richiesto: number; visuraFile?: File | null;
+    investimento: number; finanziamento_richiesto: number;
     forma_giuridica: string; partita_iva: string; codice_fiscale: string;
     sede_legale: string; pec: string;
     utile_netto: number; debiti_finanziari: number; patrimonio_netto: number;
@@ -101,10 +101,6 @@ export default function Home() {
     };
 
     try {
-      if (data.visuraFile) {
-        const enrichResult = await enrichVisura(data.visuraFile);
-        if (enrichResult.visura_data) setVisuraPrefill(enrichResult.visura_data);
-      }
 
       const analyzeRes = analyzeResult || await analyzeBando(bandoFile);
       if (!analyzeResult) setAnalyzeResult(analyzeRes);

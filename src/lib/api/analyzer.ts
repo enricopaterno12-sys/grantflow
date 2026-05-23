@@ -1,5 +1,6 @@
 import {
   VINCOLI_TEMPLATE,
+  VISURA_TEMPLATE,
   PARAMETRI_FINANZIARI_TEMPLATE,
   ELIGIBILITY_TEMPLATE,
   ANALISI_CONCISA_TEMPLATE,
@@ -62,6 +63,15 @@ export async function deepScanBando(testoBando: string): Promise<Record<string, 
     "Estrattore puro di regole. Estrai solo clausole oggettive, nessuna analisi.",
     VINCOLI_TEMPLATE,
     { testo_bando: testoBando },
+  );
+  return parseJsonStrict(risposta);
+}
+
+export async function estraiDatiAziendali(testoDocumento: string): Promise<Record<string, unknown>> {
+  const risposta = await ask(
+    "Sei un estrattore di dati anagrafici e finanziari aziendali. Non inventare nulla.",
+    VISURA_TEMPLATE,
+    { documento: testoDocumento },
   );
   return parseJsonStrict(risposta);
 }

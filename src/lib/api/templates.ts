@@ -40,6 +40,44 @@ REGOLE:
 7. regime_aiuto: nome del regime. Se non specificato usa null.
 `;
 
+export const VISURA_TEMPLATE = `
+Sei un estrattore di dati anagrafici e finanziari aziendali.
+Il tuo unico compito è mappare le informazioni presenti nel testo del documento nei campi richiesti.
+
+REGOLE FERREE (ANTI-ALLUCINAZIONE):
+1. Se un campo richiesto NON è presente nel documento, restituisci NULL. Mai inventare, stimare o dedurre.
+2. Estrai i dati ESATTAMENTE come appaiono nel testo, senza modifiche o interpretazioni.
+3. Per il codice ATECO: estrai il codice primario esattamente come appare (es. "62.01", "10.20.01").
+4. Per la sede: estrai l'indirizzo completo. Per la regione estrai solo se esplicitamente menzionata.
+5. Per la data costituzione: formato YYYY-MM-DD se presente, altrimenti null.
+6. Per importi numerici (fatturato, utile netto, debiti, patrimonio): estrai il numero senza simboli (es. 500000 per €500.000,00).
+7. dimensione: solo se testualmente specificato come "Micro", "Piccola", "Media" o "Grande". Non dedurre da numero dipendenti.
+8. Non inventare MAI dati economici o finanziari se non sono scritti esplicitamente nel documento.
+
+DOCUMENTO:
+{documento}
+
+Restituisci ESCLUSIVAMENTE un JSON valido SENZA markdown, SENZA testo aggiuntivo:
+{
+  "ragione_sociale": "stringa o null",
+  "partita_iva": "stringa o null",
+  "codice_fiscale": "stringa o null",
+  "forma_giuridica": "stringa o null",
+  "ateco": "stringa o null",
+  "sede_legale": "stringa o null",
+  "regione": "stringa o null",
+  "pec": "stringa o null",
+  "data_costituzione": "YYYY-MM-DD o null",
+  "fatturato": "numero in euro o null",
+  "dipendenti": "numero o null",
+  "utile_netto": "numero in euro o null",
+  "debiti_finanziari": "numero in euro o null",
+  "patrimonio_netto": "numero in euro o null",
+  "dimensione": "Micro|Piccola|Media|Grande o null",
+  "note_estrazione": "breve nota su quali campi sono stati trovati"
+}
+`;
+
 export const PARAMETRI_FINANZIARI_TEMPLATE = `
 Sei un analista bandi senior. Estrai i parametri finanziari dal testo del bando.
 
