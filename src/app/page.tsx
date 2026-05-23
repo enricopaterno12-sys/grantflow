@@ -8,7 +8,6 @@ import LoadingProgress from "@/components/LoadingProgress";
 import ResultsView from "@/components/ResultsView";
 import SaveModal from "@/components/SaveModal";
 import { analyzeBando, verifyEligibility } from "@/lib/api";
-import { supabase } from "@/lib/supabase";
 import type { AnalyzeResponse, VerifyResponse, CompanyData, Analysis } from "@/types";
 
 type AppStep = "upload" | "form" | "loading" | "results";
@@ -140,20 +139,22 @@ export default function Home() {
     setCurrentAnalysisId(tempId);
 
     try {
-      const { data, error } = await supabase
-        .from("analyses")
-        .insert({ user_id: "anonymous", name, data: snapshot, is_pinned: false })
-        .select().single();
+      const res = await fetch("/api/analyses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, data: snapshot, user_id: "anonymous" }),
+      });
 
-      if (!error && data) {
-        setAnalyses((prev) => prev.map((a) => (a.id === tempId ? (data as Analysis) : a)));
-        setCurrentAnalysisId(data.id);
+      if (res.ok) {
+        const saved = await res.json();
+        setAnalyses((prev) => prev.map((a) => (a.id === tempId ? (saved as Analysis) : a)));
+        setCurrentAnalysisId(saved.id);
         setRefreshKey((k) => k + 1);
-      } else if (error) {
-        console.error("Supabase save failed:", error.message);
+      } else {
+        console.error("Save failed:", await res.text());
       }
     } catch (err) {
-      console.error("Supabase save threw:", err);
+      console.error("Save failed:", err);
     }
 
     resetAnalysis();
@@ -176,15 +177,11 @@ export default function Home() {
     setError("");
 
     try {
-      const { data, error } = await supabase
-        .from("analyses")
-        .select("*")
-        .eq("id", id)
-        .single();
+      const res = await fetch(`/api/analyses/${id}`);
+      if (!res.ok) throw new Error("Analisi non trovata");
 
-      if (error || !data) throw new Error(error?.message || "Analisi non trovata");
-
-      const snap = (data as Analysis).data as Record<string, unknown>;
+      const data = await res.json();
+      const snap = (data.data || {}) as Record<string, unknown>;
       const savedVerify = snap?.verifyResult as VerifyResponse | undefined;
       const savedCompany = snap?.companyData as CompanyData | undefined;
       const savedAnalyze = snap?.analyzeResult as AnalyzeResponse | undefined;

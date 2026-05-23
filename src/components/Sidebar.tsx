@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pin, FileText } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import AnalysisDropdown from "./AnalysisDropdown";
 import type { Analysis } from "@/types";
 
@@ -20,8 +19,8 @@ function getMeta(a: Analysis) {
   return {
     ragioneSociale: d?.companyData?.ragione_sociale || a.name || "Analisi senza nome",
     nomeBando: d?.bandoInfo?.nome || "",
-    stato: d?.verifyResult?.eligibility_checks?.overall || "N/D",
-    probabilita: d?.verifyResult?.eligibility_checks?.probabilita,
+    stato: d?.verifyResult?.eligibility_checks?.overall || d?.verifyResult?.esito_calcolato?.rating || "N/D",
+    probabilita: d?.verifyResult?.eligibility_checks?.probabilita ?? d?.verifyResult?.esito_calcolato?.probabilita ?? null,
   };
 }
 
@@ -38,31 +37,47 @@ function StatusDot({ stato }: { stato: string }) {
 export default function Sidebar({ activeId, onNewAnalysis, analyses, onAnalysesChange, refreshKey, onSelectAnalysis }: Props) {
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
-        .from("analyses").select("*")
-        .order("is_pinned", { ascending: false })
-        .order("created_at", { ascending: false });
-      if (error) { console.error("Supabase fetch error:", error.message); return; }
-      if (data) onAnalysesChange(data as Analysis[]);
+      try {
+        const res = await fetch("/api/analyses");
+        if (!res.ok) return;
+        const data = await res.json();
+        onAnalysesChange(data as Analysis[]);
+      } catch {
+        console.error("Failed to fetch analyses");
+      }
     })();
   }, [onAnalysesChange, refreshKey]);
 
   const handleRename = useCallback(async (id: string, newName: string) => {
     onAnalysesChange(analyses.map((a) => (a.id === id ? { ...a, name: newName } : a)));
-    await supabase.from("analyses").update({ name: newName }).eq("id", id);
+    try {
+      await fetch(`/api/analyses/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+    } catch { /* ignore */ }
   }, [analyses, onAnalysesChange]);
 
   const handleDelete = useCallback(async (id: string) => {
     onAnalysesChange(analyses.filter((a) => a.id !== id));
-    await supabase.from("analyses").delete().eq("id", id);
+    try {
+      await fetch(`/api/analyses/${id}`, { method: "DELETE" });
+    } catch { /* ignore */ }
   }, [analyses, onAnalysesChange]);
 
   const handleTogglePin = useCallback(async (id: string, pinned: boolean) => {
     onAnalysesChange(
       analyses.map((a) => (a.id === id ? { ...a, is_pinned: pinned } : a))
-        .sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0))
+        .sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0)),
     );
-    await supabase.from("analyses").update({ is_pinned: pinned }).eq("id", id);
+    try {
+      await fetch(`/api/analyses/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_pinned: pinned }),
+      });
+    } catch { /* ignore */ }
   }, [analyses, onAnalysesChange]);
 
   const handleShare = useCallback(async (id: string) => {
