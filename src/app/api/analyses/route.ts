@@ -87,12 +87,12 @@ function normalizeRow(row: Record<string, unknown>): Record<string, unknown> {
     ...row,
     data: {
       ...rawData,
-      verifyResult: row.esito_calcolato || rawData.verifyResult
+      verifyResult: (row.esito_calcolato || rawData.verifyResult)
         ? { ...((rawData.verifyResult as Record<string, unknown>) || {}), esito_calcolato: row.esito_calcolato || (rawData.verifyResult as Record<string, unknown>)?.esito_calcolato }
         : null,
       companyData: row.company_data || rawData.companyData || null,
       bandoInfo: row.bando_info || rawData.bandoInfo || null,
-      analyzeResult: row.vincoli_bando || rawData.analyzeResult
+      analyzeResult: (row.vincoli_bando || rawData.analyzeResult)
         ? { ...((rawData.analyzeResult as Record<string, unknown>) || {}), deep_scan: row.vincoli_bando || (rawData.analyzeResult as Record<string, unknown>)?.deep_scan }
         : null,
     },

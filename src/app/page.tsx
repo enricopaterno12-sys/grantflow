@@ -131,12 +131,10 @@ export default function Home() {
     const snapshot = { analyzeResult, verifyResult, companyData, bandoInfo, tag };
     const tempId = `local_${Date.now()}`;
 
-    const optimistic: Analysis = {
+    setAnalyses((prev) => [{
       id: tempId, user_id: "anonymous", name,
       data: snapshot, created_at: new Date().toISOString(), is_pinned: false,
-    };
-    setAnalyses((prev) => [optimistic, ...prev]);
-    setCurrentAnalysisId(tempId);
+    }, ...prev]);
 
     try {
       const res = await fetch("/api/analyses", {
@@ -150,15 +148,19 @@ export default function Home() {
         setAnalyses((prev) => prev.map((a) => (a.id === tempId ? (saved as Analysis) : a)));
         setCurrentAnalysisId(saved.id);
         setRefreshKey((k) => k + 1);
+        resetAnalysis();
       } else {
-        console.error("Save failed:", await res.text());
+        const errText = await res.text();
+        console.error("Save failed:", errText);
+        setAnalyses((prev) => prev.filter((a) => a.id !== tempId));
+        setError(errText ? `Salvataggio fallito: ${errText}` : "Errore salvataggio analisi");
       }
     } catch (err) {
       console.error("Save failed:", err);
+      setAnalyses((prev) => prev.filter((a) => a.id !== tempId));
+      setError(err instanceof Error ? err.message : "Errore salvataggio analisi");
     }
-
-    resetAnalysis();
-  }, [analyzeResult, verifyResult, companyData, bandoInfo, resetAnalysis]);
+  }, [analyzeResult, verifyResult, companyData, bandoInfo]);
 
   const handleNewAnalysis = useCallback(() => {
     if (step === "results" && companyData && verifyResult) {
@@ -178,7 +180,10 @@ export default function Home() {
 
     try {
       const res = await fetch(`/api/analyses/${id}`);
-      if (!res.ok) throw new Error("Analisi non trovata");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ detail: "Analisi non trovata" }));
+        throw new Error(errData.detail || "Analisi non trovata");
+      }
 
       const data = await res.json();
       const snap = (data.data || {}) as Record<string, unknown>;
