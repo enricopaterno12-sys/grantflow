@@ -148,7 +148,6 @@ export default function Home() {
         setAnalyses((prev) => prev.map((a) => (a.id === tempId ? (saved as Analysis) : a)));
         setCurrentAnalysisId(saved.id);
         setRefreshKey((k) => k + 1);
-        resetAnalysis();
       } else {
         const errText = await res.text();
         console.error("Save failed:", errText);
@@ -160,7 +159,9 @@ export default function Home() {
       setAnalyses((prev) => prev.filter((a) => a.id !== tempId));
       setError(err instanceof Error ? err.message : "Errore salvataggio analisi");
     }
-  }, [analyzeResult, verifyResult, companyData, bandoInfo]);
+
+    resetAnalysis();
+  }, [analyzeResult, verifyResult, companyData, bandoInfo, resetAnalysis]);
 
   const handleNewAnalysis = useCallback(() => {
     if (step === "results" && companyData && verifyResult) {
