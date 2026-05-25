@@ -130,6 +130,7 @@ export default function Home() {
   const handleSaveAnalysis = useCallback(async (name: string, tag?: string) => {
     const snapshot = { analyzeResult, verifyResult, companyData, bandoInfo, tag };
     const tempId = `local_${Date.now()}`;
+    let saveError = "";
 
     setAnalyses((prev) => [{
       id: tempId, user_id: "anonymous", name,
@@ -152,15 +153,16 @@ export default function Home() {
         const errText = await res.text();
         console.error("Save failed:", errText);
         setAnalyses((prev) => prev.filter((a) => a.id !== tempId));
-        setError(errText ? `Salvataggio fallito: ${errText}` : "Errore salvataggio analisi");
+        saveError = errText ? `Salvataggio fallito: ${errText}` : "Errore salvataggio analisi";
       }
     } catch (err) {
       console.error("Save failed:", err);
       setAnalyses((prev) => prev.filter((a) => a.id !== tempId));
-      setError(err instanceof Error ? err.message : "Errore salvataggio analisi");
+      saveError = err instanceof Error ? err.message : "Errore salvataggio analisi";
     }
 
     resetAnalysis();
+    if (saveError) setError(saveError);
   }, [analyzeResult, verifyResult, companyData, bandoInfo, resetAnalysis]);
 
   const handleNewAnalysis = useCallback(() => {
