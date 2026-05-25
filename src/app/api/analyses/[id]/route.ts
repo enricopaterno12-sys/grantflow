@@ -10,20 +10,24 @@ export async function GET(
   try {
     let sb;
     try { sb = getSupabaseAdmin(); } catch {
-      return NextResponse.json({ detail: "Supabase non configurata — imposta NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY" }, { status: 500 });
+      return NextResponse.json({ detail: "Supabase non configurata" }, { status: 500 });
     }
 
     const { data, error } = await sb
       .from("analyses")
       .select("*")
-      .eq("id", params.id)
-      .single();
+      .eq("id", params.id);
 
-    if (error || !data) {
+    if (error) {
+      console.error("Supabase GET error:", error);
+      return NextResponse.json({ detail: error.message }, { status: 500 });
+    }
+
+    if (!data || data.length === 0) {
       return NextResponse.json({ detail: "Analisi non trovata" }, { status: 404 });
     }
 
-    return NextResponse.json(normalizeRow(data));
+    return NextResponse.json(normalizeRow(data[0]));
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore recupero analisi";
     return NextResponse.json({ detail: message }, { status: 500 });
@@ -110,20 +114,52 @@ export async function DELETE(
 }
 
 function normalizeRow(row: Record<string, unknown>): Record<string, unknown> {
-  const rawData = (row.data && typeof row.data === "object" ? row.data : {}) as Record<string, unknown>;
+  const rawData = (row.data && typeof row.data === "object"
+    ? row.data
+    : {}) as Record<string, unknown>;
+  const rawVR = (rawData.verifyResult && typeof rawData.verifyResult === "object"
+    ? rawData.verifyResult
+    : {}) as Record<string, unknown>;
+  const rawAR = (rawData.analyzeResult && typeof rawData.analyzeResult === "object"
+    ? rawData.analyzeResult
+    : {}) as Record<string, unknown>;
+
+  const verifyResult = {
+    ...rawVR,
+    calcolo_finanziario: row.calcolo_finanziario || rawVR.calcolo_finanziario || null,
+    analisi_concisa: row.analisi_concisa || rawVR.analisi_concisa || null,
+    esito_calcolato: row.esito_calcolato || rawVR.esito_calcolato || null,
+    business_plan_data: row.business_plan_data || rawVR.business_plan_data || null,
+    custom_prompt: row.custom_prompt || rawVR.custom_prompt || null,
+    checklist: row.checklist_pratica || rawVR.checklist || null,
+  };
 
   return {
-    ...row,
+    id: row.id,
+    name: row.name,
+    user_id: row.user_id,
+    is_pinned: row.is_pinned,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    // Nuove colonne pass-through
+    esito_calcolato: verifyResult.esito_calcolato,
+    analisi_concisa: verifyResult.analisi_concisa,
+    company_data: row.company_data || rawData.companyData || null,
+    bando_info: row.bando_info || rawData.bandoInfo || null,
+    vincoli_bando: row.vincoli_bando || rawAR.deep_scan || null,
+    calcolo_finanziario: verifyResult.calcolo_finanziario,
+    business_plan_data: verifyResult.business_plan_data,
+    custom_prompt: verifyResult.custom_prompt,
+    checklist_pratica: verifyResult.checklist,
+    // data legacy unificato
     data: {
       ...rawData,
-      verifyResult: row.esito_calcolato || rawData.verifyResult
-        ? { ...((rawData.verifyResult as Record<string, unknown>) || {}), esito_calcolato: row.esito_calcolato || (rawData.verifyResult as Record<string, unknown>)?.esito_calcolato }
-        : null,
+      verifyResult,
       companyData: row.company_data || rawData.companyData || null,
       bandoInfo: row.bando_info || rawData.bandoInfo || null,
-      analyzeResult: row.vincoli_bando || rawData.analyzeResult
-        ? { ...((rawData.analyzeResult as Record<string, unknown>) || {}), deep_scan: row.vincoli_bando || (rawData.analyzeResult as Record<string, unknown>)?.deep_scan }
-        : null,
+      analyzeResult: rawAR.deep_scan || row.vincoli_bando
+        ? { ...rawAR, deep_scan: row.vincoli_bando || rawAR.deep_scan || null }
+        : rawAR,
     },
   };
 }
