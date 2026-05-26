@@ -70,12 +70,14 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
+      console.error("Supabase INSERT error:", error);
       return NextResponse.json({ detail: error.message }, { status: 500 });
     }
 
     return NextResponse.json(inserted, { status: 201 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore salvataggio analisi";
+    console.error("POST /api/analyses error:", message);
     return NextResponse.json({ detail: message }, { status: 400 });
   }
 }
