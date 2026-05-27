@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase-server";
+import { selectById, updateRow, deleteRow } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 
@@ -8,28 +8,13 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   try {
-    let sb;
-    try { sb = getSupabaseAdmin(); } catch {
-      return NextResponse.json({ detail: "Supabase non configurata" }, { status: 500 });
-    }
-
-    const { data, error } = await sb
-      .from("analyses")
-      .select("*")
-      .eq("id", params.id);
-
-    if (error) {
-      console.error("Supabase GET error:", error);
-      return NextResponse.json({ detail: error.message }, { status: 500 });
-    }
-
-    if (!data || data.length === 0) {
-      return NextResponse.json({ detail: "Analisi non trovata" }, { status: 404 });
-    }
-
-    return NextResponse.json(normalizeRow(data[0]));
+    const data = await selectById("analyses", params.id);
+    return NextResponse.json(normalizeRow(data as Record<string, unknown>));
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore recupero analisi";
+    if (message.includes("404") || message.includes("not found") || message.includes("non trovata")) {
+      return NextResponse.json({ detail: "Analisi non trovata" }, { status: 404 });
+    }
     return NextResponse.json({ detail: message }, { status: 500 });
   }
 }
@@ -64,22 +49,7 @@ export async function PATCH(
       return NextResponse.json({ detail: "Nessun campo da aggiornare" }, { status: 400 });
     }
 
-    let sb;
-    try { sb = getSupabaseAdmin(); } catch {
-      return NextResponse.json({ detail: "Supabase non configurata" }, { status: 500 });
-    }
-
-    const { data, error } = await sb
-      .from("analyses")
-      .update(updates)
-      .eq("id", params.id)
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json({ detail: error.message }, { status: 500 });
-    }
-
+    const data = await updateRow("analyses", params.id, updates);
     return NextResponse.json(data);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore aggiornamento analisi";
@@ -92,20 +62,7 @@ export async function DELETE(
   { params }: { params: { id: string } },
 ) {
   try {
-    let sb;
-    try { sb = getSupabaseAdmin(); } catch {
-      return NextResponse.json({ detail: "Supabase non configurata" }, { status: 500 });
-    }
-
-    const { error } = await sb
-      .from("analyses")
-      .delete()
-      .eq("id", params.id);
-
-    if (error) {
-      return NextResponse.json({ detail: error.message }, { status: 500 });
-    }
-
+    await deleteRow("analyses", params.id);
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore eliminazione analisi";
@@ -141,7 +98,6 @@ function normalizeRow(row: Record<string, unknown>): Record<string, unknown> {
     is_pinned: row.is_pinned,
     created_at: row.created_at,
     updated_at: row.updated_at,
-    // Nuove colonne pass-through
     esito_calcolato: verifyResult.esito_calcolato,
     analisi_concisa: verifyResult.analisi_concisa,
     company_data: row.company_data || rawData.companyData || null,
@@ -151,7 +107,6 @@ function normalizeRow(row: Record<string, unknown>): Record<string, unknown> {
     business_plan_data: verifyResult.business_plan_data,
     custom_prompt: verifyResult.custom_prompt,
     checklist_pratica: verifyResult.checklist,
-    // data legacy unificato
     data: {
       ...rawData,
       verifyResult,

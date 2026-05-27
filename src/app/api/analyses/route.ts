@@ -1,27 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase-server";
+import { selectAll, insertRow } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    let sb;
-    try { sb = getSupabaseAdmin(); } catch {
-      return NextResponse.json({ detail: "Supabase non configurata — imposta NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY" }, { status: 500 });
-    }
-
-    const { data, error } = await sb
-      .from("analyses")
-      .select("*")
-      .order("is_pinned", { ascending: false })
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      return NextResponse.json({ detail: error.message }, { status: 500 });
-    }
-
+    const data: Record<string, unknown>[] = await selectAll("analyses");
     const safe = (data || []).map((row) => normalizeRow(row));
-
     return NextResponse.json(safe);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore recupero analisi";
@@ -46,7 +31,6 @@ export async function POST(request: NextRequest) {
       name,
       data: sanitizeSnapshot(snapshot),
       is_pinned: false,
-      // Colonne esplicite per ogni tab
       esito_calcolato: v?.esito_calcolato || null,
       analisi_concisa: v?.analisi_concisa || null,
       company_data: (snapshot as Record<string, unknown>)?.companyData || null,
@@ -58,22 +42,7 @@ export async function POST(request: NextRequest) {
       checklist_pratica: ((v?.analisi_concisa as Record<string, unknown>)?.checklist_pratica as unknown) || (v?.checklist as unknown) || null,
     };
 
-    let sb;
-    try { sb = getSupabaseAdmin(); } catch {
-      return NextResponse.json({ detail: "Supabase non configurata — imposta NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY" }, { status: 500 });
-    }
-
-    const { data: inserted, error } = await sb
-      .from("analyses")
-      .insert(record)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Supabase INSERT error:", error);
-      return NextResponse.json({ detail: error.message }, { status: 500 });
-    }
-
+    const inserted = await insertRow("analyses", record);
     return NextResponse.json(inserted, { status: 201 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Errore salvataggio analisi";
