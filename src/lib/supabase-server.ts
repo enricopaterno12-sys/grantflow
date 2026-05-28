@@ -1,164 +1,101 @@
-let cachedUrl = "";
-let cachedKey = "";
-
+/** Get env vars with lazy init — safe even if module loads before Next.js populates env */
 function getEnv() {
-  const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
+  const base = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
   const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim();
-  if (!url || !key) throw new Error("Supabase URL and key must be set in environment variables");
-  cachedUrl = url;
-  cachedKey = key;
-  return { url, key };
+  if (!base || !key) {
+    const err = `Supabase env vars missing — URL: ${base ? "OK" : "MISSING"}, KEY: ${key ? "OK" : "MISSING"}`;
+    console.error("[supabase-server]", err);
+    throw new Error(err);
+  }
+  return { base, key };
 }
 
-/** Raw fetch-based insert into a table, returning the inserted row */
-export async function insertRow(
-  table: string,
-  record: Record<string, unknown>
-): Promise<Record<string, unknown>> {
-  const { url, key } = cachedUrl ? { url: cachedUrl, key: cachedKey } : getEnv();
-
-  const res = await fetch(`${url}/rest/v1/${table}?select=*`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": key,
-      "Authorization": `Bearer ${key}`,
-      "Prefer": "return=representation",
-    },
-    body: JSON.stringify(record),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    let detail: string;
-    try {
-      const parsed = JSON.parse(body);
-      detail = parsed.message || parsed.detail || parsed.error || body;
-    } catch {
-      detail = body || `HTTP ${res.status}`;
-    }
-    throw new Error(detail);
-  }
-
-  // Accept header for single-object response
-  const accept = res.headers.get("content-type") || "";
-  if (accept.includes("json")) {
-    const data = await res.json();
-    return Array.isArray(data) ? data[0] : data;
-  }
-  return {};
+/** Build a proper REST URL, normalizing away trailing slashes and double slashes */
+function restUrl(path: string, qs: string, baseUrl: string): string {
+  // new URL resolves relative paths correctly regardless of trailing slash on base
+  const u = new URL(path, baseUrl);
+  u.search = qs;
+  return u.href;
 }
 
-/** Raw fetch-based select query */
-export async function selectAll(table: string) {
-  const { url, key } = cachedUrl ? { url: cachedUrl, key: cachedKey } : getEnv();
-
-  const res = await fetch(`${url}/rest/v1/${table}?select=*&order=is_pinned.desc,created_at.desc`, {
-    method: "GET",
-    headers: {
-      "apikey": key,
-      "Authorization": `Bearer ${key}`,
-    },
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    let detail: string;
-    try {
-      const parsed = JSON.parse(body);
-      detail = parsed.message || parsed.detail || parsed.error || body;
-    } catch {
-      detail = body || `HTTP ${res.status}`;
-    }
-    throw new Error(detail);
+async function supFetch(
+  method: string,
+  path: string,
+  qs: string,
+  body?: unknown,
+): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const { base, key } = getEnv();
+  const url = restUrl(path, qs, base);
+  const headers: Record<string, string> = {
+    "apikey": key,
+    "Authorization": `Bearer ${key}`,
+  };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    headers["Prefer"] = "return=representation";
+  }
+  // GET for a single row by pk: ask PostgREST to return an object, not array
+  if (method === "GET" && qs.includes("id=eq.")) {
+    headers["Accept"] = "application/vnd.pgrst.object+json";
   }
 
-  return res.json();
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[supabase-server] NETWORK error ${method} ${url}:`, msg);
+    throw new Error(`Errore di rete: ${msg}`);
+  }
+
+  if (!res.ok) {
+    const raw = await res.text();
+    let detail: string;
+    let code = "";
+    try {
+      const j = JSON.parse(raw);
+      detail = j.message || j.detail || j.error || raw;
+      code = j.code || "";
+    } catch {
+      detail = raw || `HTTP ${res.status}`;
+    }
+    const prefix = code ? `[${code}] ` : "";
+    console.error(`[supabase-server] HTTP ${res.status} ${method} ${url}: ${prefix}${detail}`);
+    throw new Error(`${prefix}${detail}`);
+  }
+
+  if (method === "DELETE") return { ok: true, status: res.status, data: true };
+
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : {};
+  return { ok: true, status: res.status, data };
 }
 
-/** Raw fetch-based single row select */
-export async function selectById(table: string, id: string) {
-  const { url, key } = cachedUrl ? { url: cachedUrl, key: cachedKey } : getEnv();
-
-  const res = await fetch(`${url}/rest/v1/${table}?id=eq.${id}&select=*`, {
-    method: "GET",
-    headers: {
-      "apikey": key,
-      "Authorization": `Bearer ${key}`,
-      "Accept": "application/vnd.pgrst.object+json",
-    },
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    let detail: string;
-    try {
-      const parsed = JSON.parse(body);
-      detail = parsed.message || parsed.detail || parsed.error || body;
-    } catch {
-      detail = body || `HTTP ${res.status}`;
-    }
-    throw new Error(detail);
-  }
-
-  return res.json();
+export async function insertRow(table: string, record: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { data } = await supFetch("POST", `rest/v1/${table}`, `select=*`, record);
+  return Array.isArray(data) ? data[0] : (data as Record<string, unknown>);
 }
 
-/** Raw fetch-based delete */
-export async function deleteRow(table: string, id: string) {
-  const { url, key } = cachedUrl ? { url: cachedUrl, key: cachedKey } : getEnv();
-
-  const res = await fetch(`${url}/rest/v1/${table}?id=eq.${id}`, {
-    method: "DELETE",
-    headers: {
-      "apikey": key,
-      "Authorization": `Bearer ${key}`,
-      "Prefer": "return=representation",
-    },
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    let detail: string;
-    try {
-      const parsed = JSON.parse(body);
-      detail = parsed.message || parsed.detail || parsed.error || body;
-    } catch {
-      detail = body || `HTTP ${res.status}`;
-    }
-    throw new Error(detail);
-  }
-
-  return true;
+export async function selectAll(table: string): Promise<Record<string, unknown>[]> {
+  const { data } = await supFetch("GET", `rest/v1/${table}`, `select=*&order=is_pinned.desc,created_at.desc`);
+  return data as Record<string, unknown>[];
 }
 
-/** Raw fetch-based update */
-export async function updateRow(table: string, id: string, patch: Record<string, unknown>) {
-  const { url, key } = cachedUrl ? { url: cachedUrl, key: cachedKey } : getEnv();
+export async function selectById(table: string, id: string): Promise<Record<string, unknown>> {
+  const { data } = await supFetch("GET", `rest/v1/${table}`, `id=eq.${id}&select=*`);
+  return data as Record<string, unknown>;
+}
 
-  const res = await fetch(`${url}/rest/v1/${table}?id=eq.${id}&select=*`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": key,
-      "Authorization": `Bearer ${key}`,
-      "Prefer": "return=representation",
-    },
-    body: JSON.stringify(patch),
-  });
+export async function deleteRow(table: string, id: string): Promise<boolean> {
+  const { data } = await supFetch("DELETE", `rest/v1/${table}`, `id=eq.${id}`);
+  return data as boolean;
+}
 
-  if (!res.ok) {
-    const body = await res.text();
-    let detail: string;
-    try {
-      const parsed = JSON.parse(body);
-      detail = parsed.message || parsed.detail || parsed.error || body;
-    } catch {
-      detail = body || `HTTP ${res.status}`;
-    }
-    throw new Error(detail);
-  }
-
-  const data = await res.json();
-  return Array.isArray(data) ? data[0] : data;
+export async function updateRow(table: string, id: string, patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { data } = await supFetch("PATCH", `rest/v1/${table}`, `id=eq.${id}&select=*`, patch);
+  return Array.isArray(data) ? data[0] : (data as Record<string, unknown>);
 }
