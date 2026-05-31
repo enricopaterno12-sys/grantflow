@@ -27,6 +27,7 @@ export default function Home() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const resetAnalysis = useCallback(() => {
     setStep("upload");
@@ -228,6 +229,8 @@ export default function Home() {
         onAnalysesChange={setAnalyses}
         refreshKey={refreshKey}
         onSelectAnalysis={handleSelectAnalysis}
+        isOpen={isSidebarOpen}
+        onToggle={() => setIsSidebarOpen((v) => !v)}
       />
 
       <main className="flex-1 overflow-y-auto">

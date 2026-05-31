@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Pin, FileText } from "lucide-react";
+import { Plus, Pin, FileText, ChevronLeft, ChevronRight } from "lucide-react";
 import AnalysisDropdown from "./AnalysisDropdown";
 import type { Analysis } from "@/types";
 
@@ -12,6 +12,8 @@ interface Props {
   onAnalysesChange: (analyses: Analysis[]) => void;
   refreshKey?: number;
   onSelectAnalysis?: (id: string) => void;
+  isOpen: boolean;
+  onToggle: () => void;
 }
 
 function getMeta(a: Analysis) {
@@ -34,7 +36,7 @@ function StatusDot({ stato }: { stato: string }) {
   return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${m[stato] || m["N/D"]}`} />;
 }
 
-export default function Sidebar({ activeId, onNewAnalysis, analyses, onAnalysesChange, refreshKey, onSelectAnalysis }: Props) {
+export default function Sidebar({ activeId, onNewAnalysis, analyses, onAnalysesChange, refreshKey, onSelectAnalysis, isOpen, onToggle }: Props) {
   useEffect(() => {
     (async () => {
       try {
@@ -91,33 +93,67 @@ export default function Sidebar({ activeId, onNewAnalysis, analyses, onAnalysesC
   }, []);
 
   return (
-    <aside className="w-72 bg-[#121212] text-white flex flex-col h-screen flex-shrink-0 border-r border-white/[0.04]">
-      <div className="p-5 border-b border-white/[0.04]">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center">
+    <aside
+      className={`bg-[#121212] text-white flex flex-col h-screen flex-shrink-0 border-r border-white/[0.04] transition-all duration-300 ease-in-out ${
+        isOpen ? "w-72" : "w-[72px]"
+      }`}
+    >
+      {/* Logo + Toggle */}
+      <div className={`flex items-center border-b border-white/[0.04] transition-all duration-300 ${
+        isOpen ? "p-5" : "p-4 justify-center"
+      }`}>
+        <button
+          onClick={onToggle}
+          className="flex items-center gap-3 group flex-1"
+          title={isOpen ? "Comprimi sidebar" : "Espandi sidebar"}
+        >
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center flex-shrink-0">
             <span className="text-white text-sm font-bold tracking-tight">GF</span>
           </div>
-          <h1 className="text-base font-semibold tracking-tight text-white">GrantFlow</h1>
-        </div>
+          <h1 className={`text-base font-semibold tracking-tight text-white transition-all duration-300 ${
+            isOpen ? "opacity-100" : "opacity-0 w-0 overflow-hidden"
+          }`}>GrantFlow</h1>
+        </button>
+        {isOpen && (
+          <button onClick={onToggle} className="text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
-      <div className="p-4">
-        <button onClick={onNewAnalysis}
-          className="w-full flex items-center justify-center gap-2.5 bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-medium py-2.5 px-4 rounded-xl transition-all duration-300 shadow-lg shadow-emerald-900/20"
+      {/* Nuova Analisi button */}
+      <div className={`transition-all duration-300 ${isOpen ? "p-4" : "px-3 py-3 flex justify-center"}`}>
+        <button
+          onClick={onNewAnalysis}
+          className={`flex items-center justify-center gap-2.5 bg-gradient-to-b from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-medium rounded-xl transition-all duration-300 shadow-lg shadow-emerald-900/20 ${
+            isOpen ? "w-full py-2.5 px-4" : "w-10 h-10"
+          }`}
+          title={isOpen ? "" : "Nuova Analisi"}
         >
-          <Plus className="w-4 h-4 stroke-[2.5]" /> Nuova Analisi
+          <Plus className="w-4 h-4 stroke-[2.5]" />
+          <span className={`transition-all duration-300 ${isOpen ? "opacity-100" : "opacity-0 w-0 overflow-hidden"}`}>Nuova Analisi</span>
         </button>
       </div>
 
-      <div className="px-[18px] pb-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500/80">Cronologia</p>
+      {/* Cronologia label */}
+      <div className={`transition-all duration-300 ${isOpen ? "px-[18px] pb-2" : "px-0 pb-1 flex justify-center"}`}>
+        {isOpen ? (
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500/80">Cronologia</p>
+        ) : (
+          <div className="w-8 h-px bg-white/[0.06]" />
+        )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+      {/* Analysis list */}
+      <nav className="flex-1 overflow-y-auto transition-all duration-300 px-2 pb-2 space-y-0.5">
         {analyses.length === 0 ? (
-          <div className="px-3 py-6 text-center">
-            <div className="w-10 h-10 rounded-xl bg-white/[0.03] flex items-center justify-center mx-auto mb-3"><FileText className="w-5 h-5 text-gray-600" /></div>
-            <p className="text-sm text-gray-500">Nessuna analisi salvata</p>
+          <div className={`transition-all duration-300 ${isOpen ? "px-3 py-6 text-center" : "px-1 py-4 text-center"}`}>
+            <div className="w-10 h-10 rounded-xl bg-white/[0.03] flex items-center justify-center mx-auto mb-3">
+              <FileText className="w-5 h-5 text-gray-600" />
+            </div>
+            <p className={`text-sm text-gray-500 transition-all duration-300 ${
+              isOpen ? "opacity-100" : "opacity-0 h-0 overflow-hidden"
+            }`}>Nessuna analisi salvata</p>
           </div>
         ) : analyses.map((a) => {
           const meta = getMeta(a);
@@ -125,16 +161,19 @@ export default function Sidebar({ activeId, onNewAnalysis, analyses, onAnalysesC
             <div
               key={a.id}
               onClick={() => onSelectAnalysis?.(a.id)}
-              className={`group flex items-start gap-2 px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer ${
+              className={`group flex items-start gap-2 rounded-xl transition-all duration-200 cursor-pointer ${
                 activeId === a.id ? "bg-white/[0.06] border border-white/[0.06]" : "hover:bg-white/[0.03] border border-transparent"
-              }`}
+              } ${isOpen ? "px-3 py-2.5" : "px-1.5 py-2.5 justify-center"}`}
+              title={!isOpen ? meta.ragioneSociale : undefined}
             >
-              <div className="flex items-start gap-3 flex-1 min-w-0">
+              <div className={`flex items-start gap-3 ${isOpen ? "flex-1 min-w-0" : ""}`}>
                 <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-white/[0.04] flex items-center justify-center relative mt-0.5">
                   <StatusDot stato={meta.stato} />
                   {a.is_pinned && <span className="absolute -top-1 -right-1"><Pin className="w-2.5 h-2.5 text-emerald-500 fill-emerald-500" /></span>}
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className={`flex-1 min-w-0 transition-all duration-300 ${
+                  isOpen ? "opacity-100" : "opacity-0 w-0 overflow-hidden"
+                }`}>
                   <p className="text-sm font-semibold text-gray-100 truncate">{meta.ragioneSociale}</p>
                   {meta.nomeBando && <p className="text-[11px] text-gray-500 truncate">{meta.nomeBando.slice(0, 25)}</p>}
                   <p className="text-[10px] text-gray-600 mt-0.5">
@@ -146,15 +185,30 @@ export default function Sidebar({ activeId, onNewAnalysis, analyses, onAnalysesC
                   </p>
                 </div>
               </div>
-              <AnalysisDropdown
-                analysis={{ id: a.id, name: a.name, is_pinned: a.is_pinned }}
-                onRename={handleRename} onDelete={handleDelete}
-                onTogglePin={handleTogglePin} onShare={handleShare}
-              />
+              {isOpen && (
+                <AnalysisDropdown
+                  analysis={{ id: a.id, name: a.name, is_pinned: a.is_pinned }}
+                  onRename={handleRename} onDelete={handleDelete}
+                  onTogglePin={handleTogglePin} onShare={handleShare}
+                />
+              )}
             </div>
           );
         })}
       </nav>
+
+      {/* Bottom toggle button for collapsed state */}
+      {!isOpen && (
+        <div className="p-3 flex justify-center border-t border-white/[0.04]">
+          <button
+            onClick={onToggle}
+            className="text-gray-500 hover:text-gray-300 transition-colors"
+            title="Espandi sidebar"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </aside>
   );
 }
